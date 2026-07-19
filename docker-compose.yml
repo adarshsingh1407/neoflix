@@ -1,0 +1,109 @@
+# See DESIGN_DECISIONS.md for the reasoning behind every choice here
+# (decision numbers referenced below). Copy .env.example to .env before
+# running `docker compose up -d`.
+
+networks:
+  neoflix-net:
+    name: neoflix-net
+
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${DATA_ROOT}/config/jellyfin:/config
+      - ${DATA_ROOT}/media:/data/media:ro
+    ports:
+      - "8096:8096"
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${DATA_ROOT}/config/prowlarr:/config
+    ports:
+      - "9696:9696"
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${DATA_ROOT}/config/radarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "7878:7878"
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${DATA_ROOT}/config/sonarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "8989:8989"
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - WEBUI_PORT=8080
+      - TORRENTING_PORT=6881
+    volumes:
+      - ${DATA_ROOT}/config/qbittorrent:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+
+  jellyseerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: jellyseerr
+    init: true
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${DATA_ROOT}/config/jellyseerr:/app/config
+    ports:
+      - "5055:5055"
+    depends_on:
+      - jellyfin
+      - radarr
+      - sonarr
