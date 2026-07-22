@@ -260,6 +260,55 @@ each one is actually for:
 from your phone or another device on the same WiFi, swap `localhost` for
 that computer's local network address (on a Mac: `ipconfig getifaddr en0`).
 
+## (Optional) Stop your computer's address from changing
+
+Home networks often reassign your computer a slightly different local
+address every so often (this is called DHCP). Most of the time you won't
+notice, but it'll break any bookmark you've saved on your phone or TV
+pointing at the old address. Fixing this once is worth it if that's
+happened to you.
+
+The reliable way to fix this is a **DHCP reservation** — you tell your
+router "always give this specific computer the same address," which is a
+one-time setting on the router itself, not on the Mac.
+
+1. **Find your Mac's hardware address (MAC address)** — this uniquely
+   identifies your Mac's network hardware, separate from its current IP
+   address. Run:
+   ```sh
+   ifconfig en0 | grep ether
+   ```
+   You'll get something like `ether a1:b2:c3:d4:e5:f6` — that's it.
+
+2. **Log into your router's admin page.** Usually this is done by typing
+   an address like `192.168.1.1` or `192.168.0.1` into a browser (not
+   Docker-related — this is your actual physical router/WiFi box). If you
+   don't know the login, check for a sticker on the router itself, or ask
+   whoever originally set up your home WiFi.
+
+3. **Find the DHCP reservation setting.** The exact name and location
+   varies a lot by router brand — look for something called **"DHCP
+   Reservation," "Address Reservation," "Static DHCP,"** or **"IP-MAC
+   Binding."** It's usually under a "Network," "LAN," or "DHCP" settings
+   section.
+
+4. **Add a new reservation**, pairing the MAC address from step 1 with an
+   IP address of your choice. The simplest option is to just reserve
+   whatever address your Mac currently has (check with
+   `ipconfig getifaddr en0`) — that way none of your existing bookmarks
+   need to change.
+
+5. **Save**, and restart your Mac's WiFi/network connection (or just
+   reboot) to confirm it picks up the reserved address.
+
+If you can't access your router's settings at all (e.g. it's managed by
+someone else, or your ISP locks it down), a fallback is setting a static
+IP directly on the Mac instead: **System Settings → Network → Wi-Fi (or
+Ethernet) → Details → TCP/IP → Configure IPv4: Manually.** This is less
+reliable though — if your router later happens to hand that same address
+to a different device, you'll get a conflict. The router-side reservation
+above is the better fix if you have any access to it at all.
+
 ## Curious why any of this is built this way?
 
 This guide is just the "how" — see [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
