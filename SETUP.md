@@ -1,213 +1,258 @@
 # neoflix — Setup From Scratch
 
-A complete walkthrough for setting this up on a brand-new machine, using only
-`docker-compose.yml` from this repo. No prior context needed — if you just
-want the *why* behind these choices, see [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md),
-but you don't need to read it to get running.
+This guide assumes you already know **git**, know what **Docker** is and
+have it installed, and are comfortable running commands in a terminal. It
+does **not** assume you know anything about the apps this project uses —
+every term gets explained the first time it comes up. Just follow the steps
+in order.
 
-This guide includes a bunch of gotchas that weren't obvious the first time
-through — following it in order avoids re-discovering them the hard way.
+## What you're actually building
+
+This sets up six small programs (each running in its own Docker container)
+that work together. Worth knowing what each one does before you start,
+since the setup steps will make more sense:
+
+| App | What it actually does |
+|---|---|
+| **Jellyfin** | The screen you actually watch things on — like a personal Netflix. This is the only app regular household members need to open. |
+| **Jellyseerr** | The "search and request" screen. You search for a movie/show here and click Request — everything after that happens automatically. |
+| **Radarr** | Works behind the scenes for movies — once you request one, it finds it and hands it to the download app. |
+| **Sonarr** | Same as Radarr, but for TV shows. |
+| **Prowlarr** | The search engine Radarr/Sonarr use to actually find downloadable copies of things. |
+| **qBittorrent** | Does the actual downloading. |
+| **Bazarr** *(optional)* | Automatically finds and downloads subtitles for anything you get. |
+
+You'll only ever use **Jellyfin** and **Jellyseerr** day-to-day. The rest
+you set up once and then mostly leave alone.
 
 ## 1. Prerequisites
 
-- Docker Desktop installed and running
-- Basic terminal comfort (copy/paste commands, no scripting needed)
+- Docker Desktop installed and running (you should see its icon/whale in
+  your system tray or menu bar — if it's not running, start it now)
 
 ## 2. Get the files
 
-Clone this repo, or just copy `docker-compose.yml`, `.env.example`, and
-`.gitignore` into a folder of your own.
+```sh
+git clone <this repo's URL>
+cd neoflix
+```
 
-## 3. Configure `.env`
+(Or however you'd normally get a repo onto your machine.)
+
+## 3. Fill in your settings
+
+This project reads its settings from a file called `.env`. Create your own
+copy from the template:
 
 ```sh
 cp .env.example .env
 ```
 
-Edit `.env` and fill in:
+Now open `.env` in any text editor and fill in four things:
 
-- `PUID` / `PGID` — your OS user's UID/GID, so containers write files you
-  own instead of root. Find them with:
+- **`PUID`** and **`PGID`** — two numbers that identify your user account to
+  Docker, so the files these apps create belong to you instead of some
+  internal system account. Get them by running:
   ```sh
-  id -u   # PUID
-  id -g   # PGID
+  id -u   # this number goes in PUID
+  id -g   # this number goes in PGID
   ```
-- `TZ` — your timezone, e.g. `America/New_York`. On macOS:
+- **`TZ`** — your timezone, so schedules and air-dates line up correctly.
+  Example: `America/New_York`. On a Mac, you can find yours with:
   ```sh
   readlink /etc/localtime | sed 's#.*/zoneinfo/##'
   ```
-- `DATA_ROOT` — an **absolute path outside this repo folder** where media
-  and app config will live, e.g. `/Users/you/neoflix-data`. Keeping it
-  outside the repo means it's never at risk of being swept into git.
+- **`DATA_ROOT`** — a folder path **outside this repo folder** where all
+  your actual movies, shows, and app settings will be stored. For example
+  `/Users/yourname/neoflix-data`. It doesn't need to exist yet — you'll
+  create it in the next step. Keeping it outside the repo just means it
+  never accidentally gets swept up into git.
 
-## 4. Create the data folder structure
+## 4. Create the folders
+
+Copy-paste this, but replace the path with whatever you set as `DATA_ROOT`
+above:
 
 ```sh
-DATA_ROOT=/Users/you/neoflix-data   # match what you put in .env
+DATA_ROOT=/Users/yourname/neoflix-data
 
 mkdir -p "$DATA_ROOT"/downloads/{movies,tv,music,books,audiobooks,comics}
 mkdir -p "$DATA_ROOT"/media/{movies,tv,anime,music,books,audiobooks,comics}
 mkdir -p "$DATA_ROOT"/config/{jellyfin,sonarr,radarr,prowlarr,qbittorrent,jellyseerr,bazarr}
 ```
 
-Only `movies`, `tv`, and `anime` under `media/` actually get used by this
-compose file out of the box — the rest (`music`, `books`, `audiobooks`,
-`comics`) are reserved for later if you ever add Lidarr/Readarr/a comics
-manager. Costs nothing to have them ready.
+This creates two important folders — `downloads` (where things land while
+they're being downloaded) and `media` (your actual tidy library, what
+Jellyfin shows you) — plus a `config` folder where each app keeps its own
+settings. You'll only ever browse `media/` yourself; the rest is managed
+automatically. (Not every subfolder gets used right away — a few, like
+`music` and `books`, are just there in case you add more apps later. Fine
+to ignore them.)
 
-**Key rule, don't skip this:** `downloads/` and `media/` must both live
-under the same `DATA_ROOT` and be mounted as one parent volume (not two
-separate mounts) into Radarr/Sonarr/qBittorrent — that's what lets those
-apps hardlink a finished download into the library instead of copying it
-(saves disk space). The compose file already does this correctly; just
-don't restructure the folders differently.
-
-## 5. Start the stack
+## 5. Start everything
 
 ```sh
 docker compose up -d
-docker compose ps   # confirm all 7 containers are "Up"
 ```
 
-## 6. Initial setup — do these in order
+This downloads and starts all six apps in the background. First run takes
+a few minutes since it's downloading each app. Check everything actually
+started:
 
-Each app needs one-time setup after first boot. Web UIs are at
-`http://localhost:<port>` (see table in [README.md](README.md)).
+```sh
+docker compose ps
+```
 
-### 6.1 qBittorrent (`:8080`)
+You should see six rows, all saying "Up" under status.
 
-1. Get the auto-generated first-boot password:
+## 6. One-time setup for each app
+
+This is the longest part, but it's a one-time thing. Each app has its own
+web page you'll open in a browser. If any page doesn't load right away,
+wait 20-30 seconds and refresh — some apps take a moment to finish starting.
+
+### 6.1 qBittorrent — the download app
+
+Open **`http://localhost:8080`**
+
+1. qBittorrent needs a password the very first time. Find it by running:
    ```sh
    docker logs qbittorrent | grep -i "temporary password"
    ```
-2. Log in with `admin` + that password, then immediately set a permanent
-   one (Settings → Web UI) — the temporary one resets on every restart.
-3. **Gotcha:** the default save path (`/downloads`) doesn't exist in this
-   container — only `/data/downloads` does (from the shared mount). Go to
-   Settings → Downloads and set the default save path to `/data/downloads`,
-   or downloads will silently fail to write.
-4. Optional but recommended: Settings → Downloads → Categories, add
-   `radarr` → save path `/data/downloads/movies` and `tv-sonarr` → save
-   path `/data/downloads/tv`, so files land in tidy subfolders instead of
-   one flat directory. (Radarr/Sonarr auto-create these categories on
-   first connection — you're just giving them a real save path afterward.)
+   Log in with username `admin` and that password.
+2. That temporary password resets every time the app restarts, so set a
+   real one now: click the **hamburger menu (☰) → Options → Downloads**
+   (exact menu names vary slightly by version, look for "Web UI" settings)
+   and set a permanent username/password you'll remember.
+3. **Important:** while you're in settings, find "Default Save Path" and
+   set it to `/data/downloads`. Without this, downloads will fail silently.
 
-### 6.2 Prowlarr (`:9696`)
+### 6.2 Prowlarr — the search engine
 
-1. Settings → Indexers → Add Indexer → pick a few well-known public
-   trackers (no signup needed — search for e.g. "1337x", "YTS", "The Pirate
-   Bay"). If one fails to add with an SSL/connection error, just retry —
-   these trackers have real intermittent flakiness, it's not you.
-2. **Don't skip this step** — Settings → Apps → Add Application → add both
-   Radarr (`http://radarr:7878`) and Sonarr (`http://sonarr:8989`) with
-   their API keys (find each app's key at Settings → General in that app).
-   Without this, your indexers never actually reach Radarr/Sonarr, and
-   every search comes back empty with no obvious error telling you why.
+Open **`http://localhost:9696`**
 
-### 6.3 Radarr (`:7878`) and Sonarr (`:8989`)
+1. Click **Indexers → Add Indexer**. An "indexer" here just means a
+   website Prowlarr is allowed to search. Add a couple of well-known free
+   ones — search for "1337x", "YTS", or "The Pirate Bay" in the add-indexer
+   list and enable them. No account/signup needed for these.
+2. Now the important part — click **Settings → Apps → Add Application**,
+   and add both:
+   - **Radarr**: address `http://radarr:7878`
+   - **Sonarr**: address `http://sonarr:8989`
 
-For each app:
-1. Settings → Download Clients → Add → qBittorrent (`qbittorrent`, port
-   `8080`, your qBittorrent credentials from step 6.1)
-2. Settings → Media Management → Root Folders → add `/data/media/movies`
-   (Radarr) or `/data/media/tv` (Sonarr)
-3. **Recommended:** Settings → Profiles → check your quality profiles.
-   The default "HD-1080p" profile only accepts Bluray sources and will
-   reject perfectly good WEBRip/WEBDL releases — a very common cause of
-   "search found nothing" that's actually "search found things and
-   rejected all of them." Either widen that profile or just use the
-   built-in "Any" profile for anything you don't have strong preferences
-   about.
-4. (Sonarr only) Settings → Media Management → check "Season Folders" is
-   enabled, so episodes get organized into per-season subfolders.
+   For each one, you'll need that app's **API key** — think of this as a
+   password the apps use to talk to each other automatically, so you don't
+   have to. Find it by opening Radarr (`http://localhost:7878`) or Sonarr
+   (`http://localhost:8989`) in another tab, going to **Settings →
+   General**, and copying the API Key shown there. Paste it into Prowlarr.
 
-### 6.4 Jellyseerr (`:5055`)
+   **Don't skip this step** — without it, Prowlarr's searches never
+   actually reach Radarr/Sonarr, and things will just silently not work
+   with no obvious error telling you why.
 
-Run the setup wizard: pick Jellyfin as your media server (hostname
-`jellyfin`, port `8096`), sign in, then add Radarr and Sonarr as backing
-servers using the same details as step 6.3 (container hostnames, not
-`localhost`).
+### 6.3 Radarr and Sonarr — the movie/show organizers
 
-**Recommended:** when adding each server, set the default Quality Profile
-to something permissive (like "Any") rather than "HD-1080p" — this is
-Jellyseerr's own copy of the same quality-profile setting from 6.3, and it's
-what actually gets applied to new requests.
+Open Radarr (**`http://localhost:7878`**) and repeat these for Sonarr
+(**`http://localhost:8989`**) too — the steps are identical, just for shows
+instead of movies.
 
-If you want a separate **Anime** library (see 6.6), also fill in the
-"Anime Series Type" (set to `anime`), "Anime Quality Profile," and "Anime
-Root Folder" fields under the Sonarr server config — this makes Jellyseerr
-auto-detect anime requests and route them correctly, no manual correction
-needed per-show.
+1. **Settings → Download Clients → Add → qBittorrent.** Host `qbittorrent`,
+   port `8080`, and the username/password you set in step 6.1.
+2. **Settings → Media Management → Root Folders → Add.** This is the
+   folder where finished movies/shows get placed. Use `/data/media/movies`
+   for Radarr, `/data/media/tv` for Sonarr.
+3. **Settings → Profiles.** These control which video quality you're
+   willing to accept. The default profile is stricter than you'd expect —
+   it can reject perfectly good downloads just because of how they were
+   encoded. To avoid confusing "nothing's downloading" moments later, pick
+   (or create) a profile called **"Any"** and use that for now — you can
+   always tighten it up later once things are working.
+4. (Sonarr only) **Settings → Media Management** → make sure **"Season
+   Folders"** is turned on, so episodes get organized into per-season
+   folders.
 
-### 6.5 Jellyfin (`:8096`)
+### 6.4 Jellyseerr — the request screen
 
-Run the setup wizard: create an admin account, then add libraries:
-- **Movies** → content type "Movies" → path `/data/media/movies`
-- **Shows** → content type "Shows" → path `/data/media/tv`
-- (Optional) **Anime** → content type "Shows" → path `/data/media/anime`,
-  if you set up the separate anime folder in step 4/6.4
+Open **`http://localhost:5055`** and follow its setup wizard:
 
-### 6.6 Bazarr (`:6767`) — optional, for automatic subtitles
+1. Choose **Jellyfin** as your media server
+2. Sign in (you'll create your actual Jellyfin login in the next step, so
+   if this is your very first time, do step 6.5 first, then come back here)
+3. Add Radarr and Sonarr as backing servers, same connection details as
+   step 6.3 — and again, pick the **"Any"** quality profile here too, for
+   the same reason as before.
 
-Skip this if you don't care about subtitles, or only want them occasionally
-(Jellyfin has its own on-demand OpenSubtitles plugin for that lighter case —
-Dashboard → Plugins → Catalog → install "Open Subtitles", then enter your
-own OpenSubtitles.com account under its config page).
+### 6.5 Jellyfin — the screen you actually watch on
 
-For automatic, whole-library subtitle fetching:
-1. Settings → Radarr / Sonarr → fill in hostname (`radarr`/`sonarr`), port,
-   API key — same details as everywhere else
-2. Settings → Languages → Add New Profile → add your language(s) (e.g.
-   English) → save
-3. Still on Languages: set this profile as the **default** for both Movies
-   and Series (separate dropdowns further down the page)
-4. Settings → Providers → Add → OpenSubtitles.com → enter your own account
-   credentials
-5. Click **Save**
+Open **`http://localhost:8096`** and follow its setup wizard: create your
+admin account, then add two libraries:
 
-**Why Bazarr needs a different mount than Jellyfin:** Jellyfin's media mount
-is intentionally **read-only** (limits what a media-serving app can touch).
-Bazarr's is **read-write**, because it needs to write actual subtitle files
-next to your videos. If you ever see Jellyfin's own subtitle plugin "succeed"
-but the `.srt` never appears next to the video file, that's why — it fell
-back to saving inside Jellyfin's internal config folder instead. Not a bug,
-just a consequence of the read-only mount; Bazarr is the fix.
+- **Movies**, pointing at `/data/media/movies`
+- **Shows**, pointing at `/data/media/tv`
 
-## 7. Verify it works
+### 6.6 Bazarr — automatic subtitles (optional, skip if you don't need this)
 
-1. Open Jellyseerr, search for anything, hit Request
-2. Check Radarr/Sonarr's Activity tab — should show it getting searched and
-   grabbed within a minute or so
-3. Check qBittorrent — should show it downloading
-4. Once done, check Jellyfin — should appear in the library automatically,
-   no manual file moves
+Open **`http://localhost:6767`**
 
-If a search comes back empty, re-check step 6.2 (Prowlarr → Apps) and 6.3
-step 3 (quality profile) first — those two cause the vast majority of
-"nothing's happening" cases.
+1. **Settings → Radarr** and **Settings → Sonarr** — same connection
+   details as everywhere else (hostname, port, API key)
+2. **Settings → Languages → Add New Profile** — add the language(s) you
+   want subtitles in, save
+3. Still on that page, set this profile as the **default** for both
+   Movies and Series (separate dropdowns further down)
+4. **Settings → Providers → Add → OpenSubtitles.com** — enter your own
+   free account details (make one at opensubtitles.com first if you don't
+   have one)
 
-## 8. Known rough edges
+## 7. Try it out
 
-- **Intermittent connection failures** to external sites (TMDB, indexers,
-  subtitle providers) happen occasionally and usually resolve on a simple
-  retry — this seems to be generic Docker Desktop networking flakiness, not
-  specific to any one service. Don't over-troubleshoot a single failure;
-  just try again first.
-- **Radarr/Sonarr don't import extra files** (subtitles, `.nfo`, images)
-  alongside the video by default — if a release bundles subtitles and you
-  don't have Bazarr, you'll need to manually copy them from the download
-  folder into the library folder, or install Jellyfin's subtitle plugin
-  (6.6) for on-demand fetching instead.
-- **Host IP can drift** if your router uses dynamic DHCP leases — if a
-  device that worked yesterday can't connect today, check the Mac's
-  current IP (`ipconfig getifaddr en0` on macOS) before assuming something
-  broke. A DHCP reservation in your router settings fixes this permanently.
-- **Image tags are `:latest`**, not pinned — good for a POC (auto-updates),
-  but reconsider before running this unattended long-term, since an upstream
-  update could occasionally break something without warning.
+1. Open Jellyseerr, search for any movie, click **Request**
+2. Wait a minute or two, then check qBittorrent — you should see it start
+   downloading
+3. Once it finishes, open Jellyfin — it should just appear in your library,
+   no extra steps needed
 
-## What's next
+If nothing happens after a few minutes, the two most common causes are:
+missing the Prowlarr → Apps step (6.2), or the quality profile being too
+strict (6.3/6.4) — double check those two first.
 
-Once this is running, see [USER_STORIES.md](USER_STORIES.md) for a more
-detailed manual test plan, and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) if
-you're curious why any of this is built the way it is.
+## If something's not working
+
+- **A page won't load right after startup** — give it another 30 seconds
+  and refresh. Some apps are slower to start than others.
+- **A request just sits there doing nothing** — check step 6.2 (Prowlarr
+  needs to know about Radarr/Sonarr) and step 6.3's quality profile first.
+  These two cause the vast majority of "nothing's happening."
+- **Random one-off connection errors** to outside websites — this happens
+  occasionally and almost always fixes itself if you just try the same
+  thing again a minute later. Not something to worry about unless it keeps
+  failing repeatedly.
+- **Something that worked yesterday stops connecting** — if your home
+  network reassigns your computer a new address sometimes, apps that
+  bookmarked the old address will stop working. Re-check your computer's
+  current local address and update your bookmarks if needed.
+
+## Everything you can now open
+
+Once setup is done, here's every address you now have running, and what
+each one is actually for:
+
+| Address | App | What it's for |
+|---|---|---|
+| `http://localhost:8096` | **Jellyfin** | Where you actually watch things. This is the one to bookmark on your phone/TV. |
+| `http://localhost:5055` | **Jellyseerr** | Where you search for and request new movies/shows. |
+| `http://localhost:7878` | **Radarr** | Behind-the-scenes movie manager. You won't need this day-to-day, but it's where you'd check on a movie's status or fix a setting. |
+| `http://localhost:8989` | **Sonarr** | Same as Radarr, but for TV shows. |
+| `http://localhost:9696` | **Prowlarr** | Manages which sites Radarr/Sonarr are allowed to search. Set-and-forget after step 6.2. |
+| `http://localhost:8080` | **qBittorrent** | Shows active/finished downloads in progress. Worth a peek if something seems stuck. |
+| `http://localhost:6767` | **Bazarr** | Subtitle manager, if you set it up in step 6.6. |
+
+`localhost` only works on the same computer running Docker. To reach these
+from your phone or another device on the same WiFi, swap `localhost` for
+that computer's local network address (on a Mac: `ipconfig getifaddr en0`).
+
+## Curious why any of this is built this way?
+
+This guide is just the "how" — see [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
+for the "why" behind every choice, or [USER_STORIES.md](USER_STORIES.md)
+for a more thorough test checklist once you're up and running.
