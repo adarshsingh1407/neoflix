@@ -231,6 +231,15 @@ strict (6.3/6.4) — double check those two first.
   network reassigns your computer a new address sometimes, apps that
   bookmarked the old address will stop working. Re-check your computer's
   current local address and update your bookmarks if needed.
+- **A specific movie/show just won't find anything, even after checking
+  the above** — use **Interactive Search** to see for yourself instead of
+  trusting the automatic pick. In Radarr or Sonarr, open the movie/show,
+  and look for a **magnifying glass icon** near the top of the page (it's
+  labeled "Interactive Search," separate from the plain "Search" button).
+  This shows you every option it found, including ones it rejected and
+  why — you can then pick one yourself by clicking its download icon.
+  This is especially useful for older, foreign, or less common titles that
+  the automatic search sometimes struggles to match correctly.
 
 ## Everything you can now open
 

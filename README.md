@@ -4,6 +4,27 @@ Self-hosted media server: automated movie/show acquisition + Jellyfin
 streaming, running in Docker. Currently a POC on an M1 Mac, validated against
 one movie and one show episode before any real usage.
 
+## How you'll actually use it
+
+Once set up, day-to-day usage only ever touches two apps — Jellyfin to
+watch, Jellyseerr to request something new:
+
+```mermaid
+flowchart TD
+    A([Want to watch something]) --> B{Already in your library?}
+    B -- Yes --> F[Open Jellyfin<br>phone, TV, or browser]
+    B -- Not sure or no --> C[Open Jellyseerr<br>search and tap Request]
+    C --> D[System finds it and downloads automatically<br>usually minutes to a few hours]
+    D --> E[Shows up in Jellyfin on its own]
+    E --> F
+    F --> G[Browse or search your library]
+    G --> H[Tap Play and enjoy]
+```
+
+Everything else in the stack (Radarr, Sonarr, Prowlarr, qBittorrent,
+Bazarr) runs invisibly in the background — see [HLD.md](HLD.md) for that
+side of the flow.
+
 ## Status
 
 **Design complete, POC not yet validated.** All 8 architecture decisions are
