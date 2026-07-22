@@ -13,7 +13,11 @@ for the full log. Next step is bringing the stack up and working through
 
 ## Docs
 
-Read in this order for full context:
+New to this project and just want it running? Start with
+**[SETUP.md](SETUP.md)** — a self-contained, step-by-step walkthrough from a
+fresh machine using only `docker-compose.yml`.
+
+For the deeper context, read in this order:
 
 1. [GOALS.md](GOALS.md) — what this is for, scope, non-goals, constraints.
 2. [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) — every architecture decision

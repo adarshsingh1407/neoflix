@@ -107,3 +107,22 @@ services:
       - jellyfin
       - radarr
       - sonarr
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${DATA_ROOT}/config/bazarr:/config
+      - ${DATA_ROOT}/media:/data/media
+    ports:
+      - "6767:6767"
+    depends_on:
+      - radarr
+      - sonarr
