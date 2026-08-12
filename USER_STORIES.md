@@ -1,9 +1,17 @@
 # neoflix — POC Manual Test Stories
 
 How to manually validate the running stack once it's up: M1 Mac (Docker
-Desktop, running all six containers) + iPhone (Jellyfin Mobile app + Safari)
-on the same LAN. Each story is a self-contained pass/fail check. Run them in
-order — later stories assume earlier ones passed.
+Desktop, running the core acquisition/playback containers) + iPhone
+(Jellyfin Mobile app + Safari) on the same LAN. Each story is a
+self-contained pass/fail check. Run them in order — later stories assume
+earlier ones passed.
+
+Scoped to the original POC pipeline (decisions 1-8: Jellyfin, Radarr,
+Sonarr, Prowlarr, qBittorrent, Jellyseerr, Bazarr). The optional add-ons
+from decisions 9-12 (Homepage, Ofelia, Uptime Kuma, Jellyfin Vue) aren't
+covered by these stories — Uptime Kuma's own status page is effectively
+its live health check, and the others have no acquisition/playback
+behavior to validate this way.
 
 Test content (per [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) decision #3):
 - **Movie:** *Big Buck Bunny* (Blender Foundation)
@@ -20,17 +28,19 @@ nature of what they're testing.
 
 ## 1. Stack is up `[Claude]`
 
-**As** the admin, **I want** all six containers running and their web UIs
-reachable from the Mac's browser, **so that** I know the stack booted
-correctly before configuring anything.
+**As** the admin, **I want** the core pipeline's containers running and
+their web UIs reachable from the Mac's browser, **so that** I know the
+stack booted correctly before configuring anything.
 
 Steps:
-1. `docker compose ps` — all six services show `running`/`healthy`.
+1. `docker compose ps` — Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent,
+   Jellyseerr, and Bazarr all show `running`/`healthy`.
 2. Open each in a Mac browser tab: Jellyfin (`:8096`), Radarr (`:7878`),
    Sonarr (`:8989`), Prowlarr (`:9696`), qBittorrent (`:8080`), Jellyseerr
-   (`:5055`) — adjust ports to whatever's finalized in decision #8.
+   (`:5055`), Bazarr (`:6767`) — adjust ports to whatever's finalized in
+   decision #8.
 
-**Pass:** all six load their setup/login screen. No restart loops in
+**Pass:** all seven load their setup/login screen. No restart loops in
 `docker compose ps`.
 
 ---

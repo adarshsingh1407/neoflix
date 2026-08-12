@@ -27,7 +27,7 @@ side of the flow.
 
 ## Status
 
-**Design complete, POC not yet validated.** All 8 architecture decisions are
+**Design complete, POC not yet validated.** All 12 architecture decisions are
 made and `docker-compose.yml` exists — see [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
 for the full log. Next step is bringing the stack up and working through
 [USER_STORIES.md](USER_STORIES.md).
@@ -51,7 +51,8 @@ For the deeper context, read in this order:
 
 ## Stack
 
-Six containers, one Docker bridge network, no VPN for the POC:
+One Docker bridge network, no VPN for the POC. Core acquisition/playback
+pipeline (decisions 1-8):
 
 - **Jellyfin** — media server / playback
 - **Radarr** — movie acquisition automation
@@ -59,9 +60,22 @@ Six containers, one Docker bridge network, no VPN for the POC:
 - **Prowlarr** — indexer management (public trackers)
 - **qBittorrent** — download client
 - **Jellyseerr** — unified search/request UI in front of Radarr/Sonarr/Jellyfin
+- **Bazarr** — automatic subtitles
+
+Optional extras added on top since (decisions 9-12), not needed for the
+core pipeline to work:
+
+- **Homepage** — one dashboard with links + live widgets for everything
+  above (manual YAML setup required — see SETUP.md)
+- **Ofelia** — background scheduler; rotates Homepage's background hourly
+  and regenerates library poster art nightly, both via the Jellyfin API
+- **Uptime Kuma** — monitors every web-facing service, feeds Homepage's
+  status widget
+- **Jellyfin Vue** — optional alternative Jellyfin web client (unstable
+  upstream builds only)
 
 Full rationale for each piece, and what was deliberately left out (VPN,
-Lidarr/Readarr/comics, Bazarr, monitoring), is in DESIGN_DECISIONS.md.
+Lidarr/Readarr/comics), is in DESIGN_DECISIONS.md.
 
 ## Data layout
 
