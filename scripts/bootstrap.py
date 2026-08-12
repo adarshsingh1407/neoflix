@@ -111,7 +111,7 @@ def create_folders():
         (DATA_ROOT / "media" / d).mkdir(parents=True, exist_ok=True)
     for app in (
         "jellyfin", "sonarr", "radarr", "prowlarr", "qbittorrent",
-        "jellyseerr", "bazarr", "homepage", "uptime-kuma", "ofelia",
+        "jellyseerr", "bazarr", "homepage", "uptime-kuma",
     ):
         (DATA_ROOT / "config" / app).mkdir(parents=True, exist_ok=True)
 

@@ -472,11 +472,17 @@ just to shell back out to the CLI it's trying to avoid depending on.
 `scripts/bootstrap.sh` builds a throwaway Python virtualenv first so
 nothing installs globally.
 
-**Known gap:** Ofelia's `rotate-background`/`poster-grid` scripts (decision
-#10) live in `$DATA_ROOT/config/ofelia/`, outside git — a fresh clone's
-Ofelia container has no script files to run until those are copied in by
-hand. Not covered by this decision; flagged as a follow-up, not silently
-folded into this already-large change.
+**Follow-up, closed:** Ofelia's `rotate-background`/`poster-grid` scripts
+(decision #10) originally lived only in `$DATA_ROOT/config/ofelia/`,
+outside git — a fresh clone's Ofelia container had no script files to run.
+Moved into `scripts/ofelia/` (git-tracked) with both job labels' `volume`
+mount pointing at `${PWD}/scripts/ofelia` instead of
+`${DATA_ROOT}/config/ofelia`. `rotate-background.sh` also had the Jellyfin
+API key hardcoded inline (predates decision #10's `JELLYFIN_API_KEY`
+externalization, and wasn't caught at the time since it's a separate file
+from the compose label the earlier fix touched) — fixed to read
+`JELLYFIN_URL`/`JELLYFIN_API_KEY` from its job's `environment` label, same
+as `poster-grid` already did.
 
 ---
 

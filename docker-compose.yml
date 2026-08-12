@@ -162,13 +162,14 @@ services:
       ofelia.job-run.rotate-background.image: "docker:cli"
       ofelia.job-run.rotate-background.network: "neoflix-net"
       ofelia.job-run.rotate-background.command: "/bin/sh /scripts/rotate-background.sh"
-      ofelia.job-run.rotate-background.volume: '["/var/run/docker.sock:/var/run/docker.sock", "${DATA_ROOT}/config/ofelia:/scripts:ro", "${DATA_ROOT}/config/homepage/images:/images"]'
+      ofelia.job-run.rotate-background.environment: '["JELLYFIN_URL=http://jellyfin:8096", "JELLYFIN_API_KEY=${JELLYFIN_API_KEY}"]'
+      ofelia.job-run.rotate-background.volume: '["/var/run/docker.sock:/var/run/docker.sock", "${PWD}/scripts/ofelia:/scripts:ro", "${DATA_ROOT}/config/homepage/images:/images"]'
       ofelia.job-run.poster-grid.schedule: "0 4 * * *"
       ofelia.job-run.poster-grid.image: "alpine:latest"
       ofelia.job-run.poster-grid.network: "neoflix-net"
       ofelia.job-run.poster-grid.command: "/bin/sh /scripts/poster-grid.sh"
       ofelia.job-run.poster-grid.environment: '["JELLYFIN_URL=http://jellyfin:8096", "JELLYFIN_API_KEY=${JELLYFIN_API_KEY}"]'
-      ofelia.job-run.poster-grid.volume: '["${DATA_ROOT}/config/ofelia:/scripts:ro"]'
+      ofelia.job-run.poster-grid.volume: '["${PWD}/scripts/ofelia:/scripts:ro"]'
 
   uptime-kuma:
     image: louislam/uptime-kuma:latest
