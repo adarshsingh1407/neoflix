@@ -8,9 +8,10 @@ in order.
 
 ## What you're actually building
 
-This sets up six small programs (each running in its own Docker container)
-that work together. Worth knowing what each one does before you start,
-since the setup steps will make more sense:
+This sets up a core stack of small programs (each running in its own
+Docker container) that work together, plus a few optional extras. Worth
+knowing what each one does before you start, since the setup steps will
+make more sense:
 
 | App | What it actually does |
 |---|---|
@@ -21,6 +22,12 @@ since the setup steps will make more sense:
 | **Prowlarr** | The search engine Radarr/Sonarr use to actually find downloadable copies of things. |
 | **qBittorrent** | Does the actual downloading. |
 | **Bazarr** *(optional)* | Automatically finds and downloads subtitles for anything you get. |
+| **Homepage** *(optional)* | One dashboard page with links to everything above, plus live status widgets. Needs manual setup — see the note after step 6. |
+| **Uptime Kuma** *(optional)* | Watches all the other apps and tells you if one goes down. |
+| **Jellyfin Vue** *(optional)* | An alternative, more modern-looking way to browse/watch — same server as Jellyfin, just a different screen. Try it, remove it if you don't like it. |
+
+There's also **Ofelia**, a scheduler running quietly in the background —
+it has no web page of its own, nothing to set up, nothing to open.
 
 You'll only ever use **Jellyfin** and **Jellyseerr** day-to-day. The rest
 you set up once and then mostly leave alone.
@@ -95,15 +102,17 @@ to ignore them.)
 docker compose up -d
 ```
 
-This downloads and starts all six apps in the background. First run takes
-a few minutes since it's downloading each app. Check everything actually
-started:
+This downloads and starts every app in the background — the core stack
+plus the optional extras (Homepage, Uptime Kuma, Jellyfin Vue, and Ofelia,
+which has no status page of its own since it has no web UI). First run
+takes a few minutes since it's downloading each app. Check everything
+actually started:
 
 ```sh
 docker compose ps
 ```
 
-You should see six rows, all saying "Up" under status.
+You should see a row per app, all saying "Up" under status.
 
 ## 6. One-time setup for each app
 
@@ -204,6 +213,39 @@ Open **`http://localhost:6767`**
    free account details (make one at opensubtitles.com first if you don't
    have one)
 
+### 6.7 Uptime Kuma — status monitoring (optional, skip if you don't need this)
+
+Open **`http://localhost:3001`**
+
+1. It'll show a **"Create your admin account"** screen the first time —
+   pick a username and password (this is a real account for a service
+   reachable on your network, so use a real password here, not something
+   throwaway).
+2. Click **Add New Monitor** for each app you want watched. For each one,
+   set **Monitor Type** to `HTTP(s)`, give it a name, and use the
+   container-name URL — e.g. Jellyfin is `http://jellyfin:8096`, Radarr is
+   `http://radarr:7878`, and so on (same hostnames used throughout this
+   guide).
+3. Once you've added your monitors, go to **Status Pages → New Status
+   Page**, set the **Slug** field to exactly `default`, add all your
+   monitors to it, and **Save**. The slug has to be `default` — that's
+   what `config/homepage/services.yaml` is already set up to read from, if
+   you're also using Homepage (below).
+
+### Homepage — the links dashboard (optional, skip if you don't need this)
+
+Unlike every other app above, Homepage has **no setup wizard** — it's
+configured entirely by hand-editing YAML files under
+`$DATA_ROOT/config/homepage/` (`services.yaml` for your links/widgets,
+`widgets.yaml` for the clock/weather, `settings.yaml` for layout/theme).
+There's a working example in this project's own instance to reference, but
+those files aren't included in this repo (they live in `DATA_ROOT`, kept
+out of git per decision #1) — you're writing them from scratch on a fresh
+clone. See [gethomepage.dev](https://gethomepage.dev) for the config
+schema. Once you've written a `services.yaml`,
+`docker compose up -d homepage` (or restart it if already running) to pick
+up changes — Homepage doesn't hot-reload its config.
+
 ## 7. Try it out
 
 1. Open Jellyseerr, search for any movie, click **Request**
@@ -255,6 +297,9 @@ each one is actually for:
 | `http://localhost:9696` | **Prowlarr** | Manages which sites Radarr/Sonarr are allowed to search. Set-and-forget after step 6.2. |
 | `http://localhost:8080` | **qBittorrent** | Shows active/finished downloads in progress. Worth a peek if something seems stuck. |
 | `http://localhost:6767` | **Bazarr** | Subtitle manager, if you set it up in step 6.6. |
+| `http://localhost:3001` | **Uptime Kuma** | Shows whether everything's actually up, if you set it up in step 6.7. |
+| `http://localhost:3000` | **Homepage** | One dashboard with links to everything above, if you configured it (see the note after step 6.7). |
+| `http://localhost:8090` | **Jellyfin Vue** | Alternative way to browse/watch — same server as Jellyfin, different screen. |
 
 `localhost` only works on the same computer running Docker. To reach these
 from your phone or another device on the same WiFi, swap `localhost` for

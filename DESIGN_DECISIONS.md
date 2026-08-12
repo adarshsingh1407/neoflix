@@ -291,7 +291,108 @@ this compose file again:
 
 ---
 
+### 9. Dashboard (Homepage) — DECIDED
+
+**Decision:** `ghcr.io/gethomepage/homepage:latest`, one dashboard with
+quick-launch links plus live widgets for Jellyfin, Jellyseerr, Radarr,
+Sonarr, Bazarr, qBittorrent, Uptime Kuma (#11), and Jellyfin Vue (#12).
+
+**Rationale:** solves "which port was that again" cheaply — one more
+container, reuses each app's existing API key (already generated on first
+boot per decision #7), no new secrets category beyond what's already
+externalized via `.env`.
+
+**Config is static YAML** under `config/homepage/` (`services.yaml`,
+`widgets.yaml`, `settings.yaml`, `bookmarks.yaml`, `custom.css`) — unlike
+Radarr/Sonarr/etc., there's no setup wizard. This lives in `DATA_ROOT`
+per decision #1, so it's **not version-controlled or templated in this
+repo** — a fresh clone starts Homepage with an empty, unconfigured
+dashboard. Hand-authoring that YAML is closer in effort to configuring a
+new app's web UI than to the zero-effort apps; not something `docker
+compose up -d` alone gets you for this one.
+
+**Deferred:** templating `services.yaml` from `.env`-driven values so a
+fresh clone gets a working dashboard automatically.
+
+---
+
+### 10. Scheduled automation (Ofelia) — DECIDED
+
+**Decision:** `mcuadros/ofelia:latest` as a Docker-native cron scheduler,
+configured entirely via labels on its own container — no separate config
+file, no web UI. Two jobs:
+- **`rotate-background`** (`@every 1h`) — picks a random backdrop from
+  Jellyfin's own library via its API and sets it as Homepage's background,
+  restarting Homepage after (a documented Homepage/Next.js requirement —
+  it caches static assets and won't pick up a changed file otherwise).
+- **`poster-grid`** (`0 4 * * *`) — generates a full-bleed poster-collage
+  image per Jellyfin library and pushes it back as that library's cover,
+  replacing the third-party `jellyfin-library-poster` tool (its output
+  wasted ~40% of the canvas on a plain background and cropped posters at
+  the edges; the custom version dynamically sizes its grid to the number
+  of unique posters available so nothing repeats).
+
+**Rationale:** keeps the whole stack "pure docker compose" — no system
+cron, no separate task runner needed for either job. Ofelia's `job-run`
+type spins up short-lived containers per run (`docker:cli`, `alpine:latest`,
+with `curl`/`jq`/`python3`/`py3-pillow` installed inline via `apk add` at
+run time) rather than needing a long-running custom image, so no
+Dockerfile/build step was added to the repo.
+
+**Secrets:** `JELLYFIN_API_KEY` is externalized via `.env`, same pattern as
+decision #7 — it briefly ended up hardcoded directly in a job's label
+before being caught and corrected.
+
+**Verified:** Jellyfin's own OpenAPI spec claims its image-upload endpoint
+(`POST /Items/{id}/Images/{type}`) takes raw binary, but the live server
+actually base64-decodes the request body — confirmed via the server's own
+stack trace after the naive raw-bytes version 500'd. The poster-grid script
+base64-encodes before uploading to work around this spec/implementation
+mismatch.
+
+---
+
+### 11. Uptime monitoring (Uptime Kuma) — DECIDED
+
+**Decision:** `louislam/uptime-kuma:latest`. Monitors all 8 web-facing
+services over HTTP on the internal bridge network (`jellyfin`, `radarr`,
+`sonarr`, `bazarr`, `prowlarr`, `qbittorrent`, `jellyseerr`, `jellyfin-vue`),
+backed by a public status page (slug `default`) that Homepage's widget
+reads — Uptime Kuma has no stable full API, so status-page scraping is the
+supported integration path.
+
+**Rationale:** closes the gap between "links dashboard" and "actually know
+if something's down" — Homepage's per-service widgets show data *from*
+each app, but nothing previously said whether an app was simply
+unreachable.
+
+**Setup note:** like Jellyseerr/Radarr/etc., needs a one-time admin
+account created through its own web UI on first boot (see SETUP.md) — not
+driven by compose/env. Account creation is intentionally left to whoever
+runs the stack, not automated.
+
+---
+
+### 12. Alternative Jellyfin client (Jellyfin Vue) — DECIDED
+
+**Decision:** `ghcr.io/jellyfin/jellyfin-vue:unstable`, published on host
+port `8090` (`8080` was already taken by qBittorrent's WebUI).
+
+**Rationale:** optional modern alternative to the stock Jellyfin web
+client, low cost to try — it's a pure client with no separate data/backend
+of its own, just one compose block to remove if not kept.
+
+**Caveat:** upstream has no stable release, only unstable/master-branch
+builds — a genuinely different maintenance posture than every other
+`:latest`-tagged service in this stack, where `:latest` still means "last
+tagged release." Kept as an opt-in alongside the default Jellyfin web
+client, not a replacement for it.
+
+---
+
 ## Roadmap
 
-All 8 decisions made. Next: bring the stack up and work through
+All 12 decisions made. Original POC scope (1-8) validated and running;
+dashboard, scheduled automation, uptime monitoring, and an alternative web
+client (9-12) added on top since. Next: bring the stack up and work through
 USER_STORIES.md.

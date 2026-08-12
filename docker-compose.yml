@@ -128,3 +128,65 @@ services:
     depends_on:
       - radarr
       - sonarr
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${DATA_ROOT}/config/homepage:/app/config
+      - ${DATA_ROOT}/config/homepage/images:/app/public/images
+    ports:
+      - "3000:3000"
+
+  ofelia:
+    image: mcuadros/ofelia:latest
+    container_name: ofelia
+    command: daemon --docker
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - homepage
+      - jellyfin
+    labels:
+      ofelia.job-run.rotate-background.schedule: "@every 1h"
+      ofelia.job-run.rotate-background.image: "docker:cli"
+      ofelia.job-run.rotate-background.network: "neoflix-net"
+      ofelia.job-run.rotate-background.command: "/bin/sh /scripts/rotate-background.sh"
+      ofelia.job-run.rotate-background.volume: '["/var/run/docker.sock:/var/run/docker.sock", "${DATA_ROOT}/config/ofelia:/scripts:ro", "${DATA_ROOT}/config/homepage/images:/images"]'
+      ofelia.job-run.poster-grid.schedule: "0 4 * * *"
+      ofelia.job-run.poster-grid.image: "alpine:latest"
+      ofelia.job-run.poster-grid.network: "neoflix-net"
+      ofelia.job-run.poster-grid.command: "/bin/sh /scripts/poster-grid.sh"
+      ofelia.job-run.poster-grid.environment: '["JELLYFIN_URL=http://jellyfin:8096", "JELLYFIN_API_KEY=${JELLYFIN_API_KEY}"]'
+      ofelia.job-run.poster-grid.volume: '["${DATA_ROOT}/config/ofelia:/scripts:ro"]'
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    volumes:
+      - ${DATA_ROOT}/config/uptime-kuma:/app/data
+    ports:
+      - "3001:3001"
+
+  jellyfin-vue:
+    image: ghcr.io/jellyfin/jellyfin-vue:unstable
+    container_name: jellyfin-vue
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    ports:
+      - "8090:80"
+
