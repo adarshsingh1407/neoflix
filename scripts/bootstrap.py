@@ -468,6 +468,17 @@ def save_jellyfin_api_key(api_key):
     env_path.write_text(text)
     log(".env: saved JELLYFIN_API_KEY")
 
+    # Ofelia's poster-grid/rotate-background jobs get JELLYFIN_API_KEY baked
+    # into their labels at container-creation time, not read live from .env
+    # -- ofelia was already started (docker_compose_up ran before this key
+    # existed) with that value blank, so it needs recreating now that it's
+    # real, or both scheduled jobs would silently run with no API key.
+    r = run(["docker", "compose", "up", "-d", "ofelia"], cwd=REPO_ROOT)
+    if r.returncode != 0:
+        warn("ofelia: failed to recreate with the new JELLYFIN_API_KEY -- poster-grid/rotate-background jobs will fail until you run 'docker compose up -d ofelia' yourself")
+    else:
+        log("ofelia: recreated so poster-grid/rotate-background jobs pick up JELLYFIN_API_KEY")
+
 
 # ---------------------------------------------------------------------------
 # Jellyseerr: sign in with the Jellyfin admin account, link Radarr/Sonarr
