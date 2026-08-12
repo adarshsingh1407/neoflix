@@ -366,10 +366,11 @@ if something's down" — Homepage's per-service widgets show data *from*
 each app, but nothing previously said whether an app was simply
 unreachable.
 
-**Setup note:** like Jellyseerr/Radarr/etc., needs a one-time admin
-account created through its own web UI on first boot (see SETUP.md) — not
-driven by compose/env. Account creation is intentionally left to whoever
-runs the stack, not automated.
+**Setup note:** needs a one-time admin account on first boot, same as every
+other app here. Originally left manual since Uptime Kuma has no plain REST
+API for it (it's socket.io-based) — decision #13 automated it anyway, via
+the `uptime-kuma-api` library's `setup()` call over that same socket.io
+connection.
 
 ---
 
@@ -390,9 +391,104 @@ client, not a replacement for it.
 
 ---
 
+### 13. Automated post-setup (`scripts/bootstrap.py`) — DECIDED
+
+**Problem:** a friend cloned the repo, followed SETUP.md, and still had to
+manually create four separate accounts and wire up seven apps by hand
+before anything worked — the "one command and you're done" promise of
+`docker compose up -d` didn't actually hold past the containers starting.
+
+**Decision:** a single script (`scripts/bootstrap.sh` → `scripts/bootstrap.py`)
+that replaces SETUP.md's old step 4 (folder creation) and step 6
+(per-app manual setup) entirely. The only manual input left is
+`credentials.env` (gitignored, same pattern as `.env` — decision #7): one
+admin username/password reused everywhere a new account gets created
+(qBittorrent, Jellyfin, Uptime Kuma), plus an optional real OpenSubtitles
+account for Bazarr.
+
+**What makes this feasible at all:** every `*arr`-family app (Radarr,
+Sonarr, Prowlarr) writes its own auto-generated API key to `config.xml` on
+first boot — readable straight off disk, no login required first. That's
+the anchor the rest of the automation hangs off. Per-service approach:
+
+- **qBittorrent** — same temp-password-from-logs flow a human would use,
+  scripted (`docker logs` → login → `setPreferences` for permanent
+  credentials + default save path).
+- **Prowlarr** — indexers and Radarr/Sonarr app links added via its
+  schema-driven REST API (fetch a field template by name, fill in values,
+  POST).
+- **Radarr/Sonarr** — download client, root folder, and an "Any" quality
+  profile (everything allowed except `Unknown`/`Raw-HD`, matching what a
+  human following the old SETUP.md steps would have picked) created the
+  same schema-driven way.
+- **Jellyfin** — its `/Startup/*` endpoints are a genuine, documented
+  setup-wizard API (confirmed against the live server's own OpenAPI spec),
+  not a hack. Creates the admin account, both libraries, and a permanent
+  API key (also saved into `.env` as `JELLYFIN_API_KEY`, so Ofelia's
+  poster-grid job — decision #10 — picks it up too).
+- **Jellyseerr** — `POST /auth/jellyfin` doubles as account creation: sign
+  in with the just-created Jellyfin admin account and, since no other user
+  exists yet, Jellyseerr creates its own admin account from that login.
+  Radarr/Sonarr get linked the same way as Prowlarr's app links.
+- **Bazarr** — has no documented settings API (its public API is
+  read/action endpoints only — history, wanted, providers — not
+  configuration). Its settings *are* just a YAML file
+  (`config/bazarr/config/config.yaml`) that Bazarr writes on first boot and
+  reads on restart, so the script patches that file directly (Radarr/Sonarr
+  connection info, OpenSubtitles credentials if provided) and restarts the
+  container — the same "no wizard, it's just a config file" shape as
+  Homepage.
+- **Uptime Kuma** — turned out to be *not* the hardest piece, despite that
+  assumption in decision #11. The `uptime-kuma-api` PyPI library wraps its
+  socket.io protocol, including a `setup()` call that performs first-run
+  account creation, so it's fully automatable — monitors and the public
+  status page too. Decision #11 updated accordingly.
+- **Homepage** — the most automatable of all, since it never had a wizard
+  in the first place (decision #9): the script templates a minimal working
+  `services.yaml`/`widgets.yaml`/`settings.yaml` from the API keys
+  discovered above.
+
+**Deliberately still manual, by design, not oversight:**
+- **Bazarr's subtitle language profile** — stored in Bazarr's own SQLite
+  database (`table_languages_profiles`), not a file or any documented API.
+  Writing to a live app's internal DB schema directly was judged too
+  fragile (version-to-version schema risk, WAL-file corruption risk) for
+  the payoff of automating a two-click, genuinely personal preference
+  (which subtitle language you want).
+- **The OpenSubtitles account itself** — has to be a real third-party
+  account the user controls; the script only wires in credentials already
+  provided, same boundary as everywhere else in this project (Claude
+  doesn't create accounts on live external services on the user's behalf).
+- **Homepage's cosmetic personalization** — weather location, background
+  rotation, custom greeting text, and similar touches from decisions #9-10
+  stay manual; the script's dashboard is a functional starting point, not
+  a finished one.
+
+**Execution model:** runs on the host (not as a Docker container), since it
+needs `docker logs`/`docker compose up -d` and direct filesystem access to
+`$DATA_ROOT` for both folder creation and reading each app's generated
+config — a throwaway container would need the docker socket bind-mounted
+just to shell back out to the CLI it's trying to avoid depending on.
+`scripts/bootstrap.sh` builds a throwaway Python virtualenv first so
+nothing installs globally.
+
+**Follow-up, closed:** Ofelia's `rotate-background`/`poster-grid` scripts
+(decision #10) originally lived only in `$DATA_ROOT/config/ofelia/`,
+outside git — a fresh clone's Ofelia container had no script files to run.
+Moved into `scripts/ofelia/` (git-tracked) with both job labels' `volume`
+mount pointing at `${PWD}/scripts/ofelia` instead of
+`${DATA_ROOT}/config/ofelia`. `rotate-background.sh` also had the Jellyfin
+API key hardcoded inline (predates decision #10's `JELLYFIN_API_KEY`
+externalization, and wasn't caught at the time since it's a separate file
+from the compose label the earlier fix touched) — fixed to read
+`JELLYFIN_URL`/`JELLYFIN_API_KEY` from its job's `environment` label, same
+as `poster-grid` already did.
+
+---
+
 ## Roadmap
 
-All 12 decisions made. Original POC scope (1-8) validated and running;
-dashboard, scheduled automation, uptime monitoring, and an alternative web
-client (9-12) added on top since. Next: bring the stack up and work through
-USER_STORIES.md.
+All 13 decisions made. Original POC scope (1-8) validated and running;
+dashboard, scheduled automation, uptime monitoring, an alternative web
+client (9-12), and automated post-setup (13) added on top since. Next:
+bring the stack up and work through USER_STORIES.md.

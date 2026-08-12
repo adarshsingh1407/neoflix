@@ -27,7 +27,7 @@ side of the flow.
 
 ## Status
 
-**Design complete, POC not yet validated.** All 12 architecture decisions are
+**Design complete, POC not yet validated.** All 13 architecture decisions are
 made and `docker-compose.yml` exists — see [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
 for the full log. Next step is bringing the stack up and working through
 [USER_STORIES.md](USER_STORIES.md).
@@ -66,13 +66,16 @@ Optional extras added on top since (decisions 9-12), not needed for the
 core pipeline to work:
 
 - **Homepage** — one dashboard with links + live widgets for everything
-  above (manual YAML setup required — see SETUP.md)
+  above (`scripts/bootstrap.sh` writes a starting version — see SETUP.md)
 - **Ofelia** — background scheduler; rotates Homepage's background hourly
   and regenerates library poster art nightly, both via the Jellyfin API
 - **Uptime Kuma** — monitors every web-facing service, feeds Homepage's
   status widget
 - **Jellyfin Vue** — optional alternative Jellyfin web client (unstable
   upstream builds only)
+
+All of the above, plus the core pipeline's account/connection setup, is
+what `scripts/bootstrap.py` automates (decision #13) — see SETUP.md.
 
 Full rationale for each piece, and what was deliberately left out (VPN,
 Lidarr/Readarr/comics), is in DESIGN_DECISIONS.md.
@@ -86,9 +89,14 @@ structure and why it's kept separate from the git-tracked project folder.
 ## Running it
 
 ```sh
-cp .env.example .env   # already done for this machine; adjust PUID/PGID/TZ/DATA_ROOT if needed
-docker compose up -d
+cp .env.example .env                       # adjust PUID/PGID/TZ/DATA_ROOT if needed
+cp credentials.env.example credentials.env # fill in an admin login (decision #13)
+scripts/bootstrap.sh                       # creates folders, starts the stack, wires everything up
 ```
 
-Then work through [USER_STORIES.md](USER_STORIES.md) to wire up indexers,
-download client, and Jellyseerr, and validate playback on iPhone.
+That last command replaces what used to be a long list of manual per-app
+setup steps — see [SETUP.md](SETUP.md) for the full walkthrough (and its
+manual-setup appendix, if you'd rather click through it yourself).
+
+Then work through [USER_STORIES.md](USER_STORIES.md) to validate the
+pipeline and playback on iPhone.
