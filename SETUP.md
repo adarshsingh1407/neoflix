@@ -22,7 +22,7 @@ make more sense:
 | **Prowlarr** | The search engine Radarr/Sonarr use to actually find downloadable copies of things. |
 | **qBittorrent** | Does the actual downloading. |
 | **Bazarr** *(optional)* | Automatically finds and downloads subtitles for anything you get. |
-| **Homepage** *(optional)* | One dashboard page with links to everything above, plus live status widgets. Needs manual setup — see the note after step 6. |
+| **Homepage** *(optional)* | One dashboard page with links to everything above, plus live status widgets. The setup script gives you a working starting version. |
 | **Uptime Kuma** *(optional)* | Watches all the other apps and tells you if one goes down. |
 | **Jellyfin Vue** *(optional)* | An alternative, more modern-looking way to browse/watch — same server as Jellyfin, just a different screen. Try it, remove it if you don't like it. |
 
@@ -36,6 +36,9 @@ you set up once and then mostly leave alone.
 
 - Docker Desktop installed and running (you should see its icon/whale in
   your system tray or menu bar — if it's not running, start it now)
+- Python 3 (macOS ships with this already — check with `python3 --version`).
+  Only needed for the setup script in step 5; it builds a throwaway
+  virtualenv for its own dependencies, nothing gets installed globally.
 
 ## 2. Get the files
 
@@ -75,38 +78,53 @@ Now open `.env` in any text editor and fill in four things:
   create it in the next step. Keeping it outside the repo just means it
   never accidentally gets swept up into git.
 
-## 4. Create the folders
+## 4. Add your credentials
 
-Copy-paste this, but replace the path with whatever you set as `DATA_ROOT`
-above:
-
-```sh
-DATA_ROOT=/Users/yourname/neoflix-data
-
-mkdir -p "$DATA_ROOT"/downloads/{movies,tv,music,books,audiobooks,comics}
-mkdir -p "$DATA_ROOT"/media/{movies,tv,anime,music,books,audiobooks,comics}
-mkdir -p "$DATA_ROOT"/config/{jellyfin,sonarr,radarr,prowlarr,qbittorrent,jellyseerr,bazarr}
-```
-
-This creates two important folders — `downloads` (where things land while
-they're being downloaded) and `media` (your actual tidy library, what
-Jellyfin shows you) — plus a `config` folder where each app keeps its own
-settings. You'll only ever browse `media/` yourself; the rest is managed
-automatically. (Not every subfolder gets used right away — a few, like
-`music` and `books`, are just there in case you add more apps later. Fine
-to ignore them.)
-
-## 5. Start everything
+This is the only manual account setup left — everything else in step 5 is
+scripted. Create your own copy of the credentials template:
 
 ```sh
-docker compose up -d
+cp credentials.env.example credentials.env
 ```
 
-This downloads and starts every app in the background — the core stack
-plus the optional extras (Homepage, Uptime Kuma, Jellyfin Vue, and Ofelia,
-which has no status page of its own since it has no web UI). First run
-takes a few minutes since it's downloading each app. Check everything
-actually started:
+Open `credentials.env` and fill in:
+
+- **`ADMIN_USERNAME`** / **`ADMIN_PASSWORD`** — one login, reused for every
+  app that needs a new account created (qBittorrent, Jellyfin, Uptime
+  Kuma). Pick a real password; these are reachable on your LAN.
+- **`OPENSUBTITLES_USERNAME`** / **`OPENSUBTITLES_PASSWORD`** *(optional)* —
+  Bazarr's subtitle provider needs a real
+  [OpenSubtitles.com](https://www.opensubtitles.com/en/users/newuser)
+  account. Leave blank to skip subtitles for now; add it later by hand in
+  Bazarr's UI if you change your mind.
+
+`credentials.env` is gitignored, same as `.env` — it never gets committed.
+
+## 5. Run the setup script
+
+```sh
+scripts/bootstrap.sh
+```
+
+This one command replaces the folder-creation and one-time-per-app setup
+that used to be manual: it creates the data folders, starts the stack,
+waits for each app to generate its own API key, and then wires everything
+together — download client, indexers, root folders, a permissive quality
+profile, Jellyfin's admin account and libraries, Jellyseerr, Bazarr's
+Radarr/Sonarr connections, Uptime Kuma's monitors and status page, and a
+starter Homepage dashboard. It needs Python 3 (to build a throwaway
+virtualenv for its dependencies) alongside Docker. Safe to re-run if it
+fails partway — every step checks existing state first.
+
+It prints a summary at the end, including anything it couldn't do for you.
+Two things are *never* automated, by design:
+
+- **Bazarr's subtitle language profile** — stored in Bazarr's own database,
+  not a file or documented API. One-time pick in **Settings → Languages**.
+- **The OpenSubtitles account itself** — has to be a real account you
+  control; the script only wires in credentials you already have.
+
+Check everything started:
 
 ```sh
 docker compose ps
@@ -114,139 +132,11 @@ docker compose ps
 
 You should see a row per app, all saying "Up" under status.
 
-## 6. One-time setup for each app
+**Prefer to do it by hand, or want to know what the script is actually
+doing?** See the [manual setup appendix](#manual-setup-appendix) at the
+bottom of this file — same steps, one app at a time.
 
-This is the longest part, but it's a one-time thing. Each app has its own
-web page you'll open in a browser. If any page doesn't load right away,
-wait 20-30 seconds and refresh — some apps take a moment to finish starting.
-
-### 6.1 qBittorrent — the download app
-
-Open **`http://localhost:8080`**
-
-1. qBittorrent needs a password the very first time. Find it by running:
-   ```sh
-   docker logs qbittorrent | grep -i "temporary password"
-   ```
-   Log in with username `admin` and that password.
-2. That temporary password resets every time the app restarts, so set a
-   real one now: click the **hamburger menu (☰) → Options → Downloads**
-   (exact menu names vary slightly by version, look for "Web UI" settings)
-   and set a permanent username/password you'll remember.
-3. **Important:** while you're in settings, find "Default Save Path" and
-   set it to `/data/downloads`. Without this, downloads will fail silently.
-
-### 6.2 Prowlarr — the search engine
-
-Open **`http://localhost:9696`**
-
-1. Click **Indexers → Add Indexer**. An "indexer" here just means a
-   website Prowlarr is allowed to search. Add a couple of well-known free
-   ones — search for "1337x", "YTS", or "The Pirate Bay" in the add-indexer
-   list and enable them. No account/signup needed for these.
-2. Now the important part — click **Settings → Apps → Add Application**,
-   and add both:
-   - **Radarr**: address `http://radarr:7878`
-   - **Sonarr**: address `http://sonarr:8989`
-
-   For each one, you'll need that app's **API key** — think of this as a
-   password the apps use to talk to each other automatically, so you don't
-   have to. Find it by opening Radarr (`http://localhost:7878`) or Sonarr
-   (`http://localhost:8989`) in another tab, going to **Settings →
-   General**, and copying the API Key shown there. Paste it into Prowlarr.
-
-   **Don't skip this step** — without it, Prowlarr's searches never
-   actually reach Radarr/Sonarr, and things will just silently not work
-   with no obvious error telling you why.
-
-### 6.3 Radarr and Sonarr — the movie/show organizers
-
-Open Radarr (**`http://localhost:7878`**) and repeat these for Sonarr
-(**`http://localhost:8989`**) too — the steps are identical, just for shows
-instead of movies.
-
-1. **Settings → Download Clients → Add → qBittorrent.** Host `qbittorrent`,
-   port `8080`, and the username/password you set in step 6.1.
-2. **Settings → Media Management → Root Folders → Add.** This is the
-   folder where finished movies/shows get placed. Use `/data/media/movies`
-   for Radarr, `/data/media/tv` for Sonarr.
-3. **Settings → Profiles.** These control which video quality you're
-   willing to accept. The default profile is stricter than you'd expect —
-   it can reject perfectly good downloads just because of how they were
-   encoded. To avoid confusing "nothing's downloading" moments later, pick
-   (or create) a profile called **"Any"** and use that for now — you can
-   always tighten it up later once things are working.
-4. (Sonarr only) **Settings → Media Management** → make sure **"Season
-   Folders"** is turned on, so episodes get organized into per-season
-   folders.
-
-### 6.4 Jellyseerr — the request screen
-
-Open **`http://localhost:5055`** and follow its setup wizard:
-
-1. Choose **Jellyfin** as your media server
-2. Sign in (you'll create your actual Jellyfin login in the next step, so
-   if this is your very first time, do step 6.5 first, then come back here)
-3. Add Radarr and Sonarr as backing servers, same connection details as
-   step 6.3 — and again, pick the **"Any"** quality profile here too, for
-   the same reason as before.
-
-### 6.5 Jellyfin — the screen you actually watch on
-
-Open **`http://localhost:8096`** and follow its setup wizard: create your
-admin account, then add two libraries:
-
-- **Movies**, pointing at `/data/media/movies`
-- **Shows**, pointing at `/data/media/tv`
-
-### 6.6 Bazarr — automatic subtitles (optional, skip if you don't need this)
-
-Open **`http://localhost:6767`**
-
-1. **Settings → Radarr** and **Settings → Sonarr** — same connection
-   details as everywhere else (hostname, port, API key)
-2. **Settings → Languages → Add New Profile** — add the language(s) you
-   want subtitles in, save
-3. Still on that page, set this profile as the **default** for both
-   Movies and Series (separate dropdowns further down)
-4. **Settings → Providers → Add → OpenSubtitles.com** — enter your own
-   free account details (make one at opensubtitles.com first if you don't
-   have one)
-
-### 6.7 Uptime Kuma — status monitoring (optional, skip if you don't need this)
-
-Open **`http://localhost:3001`**
-
-1. It'll show a **"Create your admin account"** screen the first time —
-   pick a username and password (this is a real account for a service
-   reachable on your network, so use a real password here, not something
-   throwaway).
-2. Click **Add New Monitor** for each app you want watched. For each one,
-   set **Monitor Type** to `HTTP(s)`, give it a name, and use the
-   container-name URL — e.g. Jellyfin is `http://jellyfin:8096`, Radarr is
-   `http://radarr:7878`, and so on (same hostnames used throughout this
-   guide).
-3. Once you've added your monitors, go to **Status Pages → New Status
-   Page**, set the **Slug** field to exactly `default`, add all your
-   monitors to it, and **Save**. The slug has to be `default` — that's
-   what `config/homepage/services.yaml` is already set up to read from, if
-   you're also using Homepage (below).
-
-### Homepage — the links dashboard (optional, skip if you don't need this)
-
-Unlike every other app above, Homepage has **no setup wizard** — it's
-configured entirely by hand-editing YAML files under
-`$DATA_ROOT/config/homepage/` (`services.yaml` for your links/widgets,
-`widgets.yaml` for the clock/weather, `settings.yaml` for layout/theme).
-There's a working example in this project's own instance to reference, but
-those files aren't included in this repo (they live in `DATA_ROOT`, kept
-out of git per decision #1) — you're writing them from scratch on a fresh
-clone. See [gethomepage.dev](https://gethomepage.dev) for the config
-schema. Once you've written a `services.yaml`,
-`docker compose up -d homepage` (or restart it if already running) to pick
-up changes — Homepage doesn't hot-reload its config.
-
-## 7. Try it out
+## 6. Try it out
 
 1. Open Jellyseerr, search for any movie, click **Request**
 2. Wait a minute or two, then check qBittorrent — you should see it start
@@ -254,17 +144,21 @@ up changes — Homepage doesn't hot-reload its config.
 3. Once it finishes, open Jellyfin — it should just appear in your library,
    no extra steps needed
 
-If nothing happens after a few minutes, the two most common causes are:
-missing the Prowlarr → Apps step (6.2), or the quality profile being too
-strict (6.3/6.4) — double check those two first.
+If nothing happens after a few minutes and you ran `bootstrap.sh`, check its
+summary output for warnings first — it prints exactly what it couldn't do
+for you. If you set things up by hand, the two most common causes are:
+missing the Prowlarr → Apps link, or the quality profile being too strict
+(see the **Prowlarr** and **Radarr and Sonarr** sections in the manual
+setup appendix below).
 
 ## If something's not working
 
 - **A page won't load right after startup** — give it another 30 seconds
   and refresh. Some apps are slower to start than others.
-- **A request just sits there doing nothing** — check step 6.2 (Prowlarr
-  needs to know about Radarr/Sonarr) and step 6.3's quality profile first.
-  These two cause the vast majority of "nothing's happening."
+- **A request just sits there doing nothing** — check that Prowlarr knows
+  about Radarr/Sonarr, and that the quality profile isn't too strict (see
+  the manual appendix). These two cause the vast majority of "nothing's
+  happening."
 - **Random one-off connection errors** to outside websites — this happens
   occasionally and almost always fixes itself if you just try the same
   thing again a minute later. Not something to worry about unless it keeps
@@ -294,11 +188,11 @@ each one is actually for:
 | `http://localhost:5055` | **Jellyseerr** | Where you search for and request new movies/shows. |
 | `http://localhost:7878` | **Radarr** | Behind-the-scenes movie manager. You won't need this day-to-day, but it's where you'd check on a movie's status or fix a setting. |
 | `http://localhost:8989` | **Sonarr** | Same as Radarr, but for TV shows. |
-| `http://localhost:9696` | **Prowlarr** | Manages which sites Radarr/Sonarr are allowed to search. Set-and-forget after step 6.2. |
+| `http://localhost:9696` | **Prowlarr** | Manages which sites Radarr/Sonarr are allowed to search. Set-and-forget once linked up. |
 | `http://localhost:8080` | **qBittorrent** | Shows active/finished downloads in progress. Worth a peek if something seems stuck. |
-| `http://localhost:6767` | **Bazarr** | Subtitle manager, if you set it up in step 6.6. |
-| `http://localhost:3001` | **Uptime Kuma** | Shows whether everything's actually up, if you set it up in step 6.7. |
-| `http://localhost:3000` | **Homepage** | One dashboard with links to everything above, if you configured it (see the note after step 6.7). |
+| `http://localhost:6767` | **Bazarr** | Subtitle manager, if you're using it. |
+| `http://localhost:3001` | **Uptime Kuma** | Shows whether everything's actually up, if you're using it. |
+| `http://localhost:3000` | **Homepage** | One dashboard with links to everything above, if you're using it. |
 | `http://localhost:8090` | **Jellyfin Vue** | Alternative way to browse/watch — same server as Jellyfin, different screen. |
 
 `localhost` only works on the same computer running Docker. To reach these
@@ -353,6 +247,138 @@ Ethernet) → Details → TCP/IP → Configure IPv4: Manually.** This is less
 reliable though — if your router later happens to hand that same address
 to a different device, you'll get a conflict. The router-side reservation
 above is the better fix if you have any access to it at all.
+
+## Manual setup appendix
+
+Everything below is what `scripts/bootstrap.sh` does for you automatically
+(decision #13). Use this if you'd rather click through it yourself, need
+to fix up one specific app after the script partially failed, or are just
+curious what it's actually doing under the hood. Each app has its own web
+page you'll open in a browser — if a page doesn't load right away, wait
+20-30 seconds and refresh, some apps take a moment to finish starting.
+
+### qBittorrent — the download app
+
+Open **`http://localhost:8080`**
+
+1. qBittorrent needs a password the very first time. Find it by running:
+   ```sh
+   docker logs qbittorrent | grep -i "temporary password"
+   ```
+   Log in with username `admin` and that password.
+2. That temporary password resets every time the app restarts, so set a
+   real one now: click the **hamburger menu (☰) → Options → Downloads**
+   (exact menu names vary slightly by version, look for "Web UI" settings)
+   and set a permanent username/password you'll remember.
+3. **Important:** while you're in settings, find "Default Save Path" and
+   set it to `/data/downloads`. Without this, downloads will fail silently.
+
+### Prowlarr — the search engine
+
+Open **`http://localhost:9696`**
+
+1. Click **Indexers → Add Indexer**. An "indexer" here just means a
+   website Prowlarr is allowed to search. Add a couple of well-known free
+   ones — search for "1337x", "YTS", or "The Pirate Bay" in the add-indexer
+   list and enable them. No account/signup needed for these.
+2. Now the important part — click **Settings → Apps → Add Application**,
+   and add both:
+   - **Radarr**: address `http://radarr:7878`
+   - **Sonarr**: address `http://sonarr:8989`
+
+   For each one, you'll need that app's **API key** — think of this as a
+   password the apps use to talk to each other automatically, so you don't
+   have to. Find it by opening Radarr (`http://localhost:7878`) or Sonarr
+   (`http://localhost:8989`) in another tab, going to **Settings →
+   General**, and copying the API Key shown there. Paste it into Prowlarr.
+
+   **Don't skip this step** — without it, Prowlarr's searches never
+   actually reach Radarr/Sonarr, and things will just silently not work
+   with no obvious error telling you why.
+
+### Radarr and Sonarr — the movie/show organizers
+
+Open Radarr (**`http://localhost:7878`**) and repeat these for Sonarr
+(**`http://localhost:8989`**) too — the steps are identical, just for shows
+instead of movies.
+
+1. **Settings → Download Clients → Add → qBittorrent.** Host `qbittorrent`,
+   port `8080`, and the username/password you set in qBittorrent's step
+   above.
+2. **Settings → Media Management → Root Folders → Add.** This is the
+   folder where finished movies/shows get placed. Use `/data/media/movies`
+   for Radarr, `/data/media/tv` for Sonarr.
+3. **Settings → Profiles.** These control which video quality you're
+   willing to accept. The default profile is stricter than you'd expect —
+   it can reject perfectly good downloads just because of how they were
+   encoded. To avoid confusing "nothing's downloading" moments later, pick
+   (or create) a profile called **"Any"** and use that for now — you can
+   always tighten it up later once things are working.
+
+### Jellyseerr — the request screen
+
+Open **`http://localhost:5055`** and follow its setup wizard:
+
+1. Choose **Jellyfin** as your media server
+2. Sign in (you'll create your actual Jellyfin login in the next step, so
+   if this is your very first time, do the Jellyfin step first, then come
+   back here)
+3. Add Radarr and Sonarr as backing servers, same connection details as
+   above — and again, pick the **"Any"** quality profile here too, for the
+   same reason as before.
+
+### Jellyfin — the screen you actually watch on
+
+Open **`http://localhost:8096`** and follow its setup wizard: create your
+admin account, then add two libraries:
+
+- **Movies**, pointing at `/data/media/movies`
+- **Shows**, pointing at `/data/media/tv`
+
+### Bazarr — automatic subtitles (optional, skip if you don't need this)
+
+Open **`http://localhost:6767`**
+
+1. **Settings → Radarr** and **Settings → Sonarr** — same connection
+   details as everywhere else (hostname, port, API key)
+2. **Settings → Languages → Add New Profile** — add the language(s) you
+   want subtitles in, save
+3. Still on that page, set this profile as the **default** for both
+   Movies and Series (separate dropdowns further down)
+4. **Settings → Providers → Add → OpenSubtitles.com** — enter your own
+   free account details (make one at opensubtitles.com first if you don't
+   have one)
+
+### Uptime Kuma — status monitoring (optional, skip if you don't need this)
+
+Open **`http://localhost:3001`**
+
+1. It'll show a **"Create your admin account"** screen the first time —
+   pick a username and password (this is a real account for a service
+   reachable on your network, so use a real password here, not something
+   throwaway).
+2. Click **Add New Monitor** for each app you want watched. For each one,
+   set **Monitor Type** to `HTTP(s)`, give it a name, and use the
+   container-name URL — e.g. Jellyfin is `http://jellyfin:8096`, Radarr is
+   `http://radarr:7878`, and so on (same hostnames used throughout this
+   guide).
+3. Once you've added your monitors, go to **Status Pages → New Status
+   Page**, set the **Slug** field to exactly `default`, add all your
+   monitors to it, and **Save**. The slug has to be `default` — that's
+   what `config/homepage/services.yaml` is already set up to read from, if
+   you're also using Homepage (below).
+
+### Homepage — the links dashboard (optional, skip if you don't need this)
+
+Unlike every other app above, Homepage has **no setup wizard** — it's
+configured entirely by hand-editing YAML files under
+`$DATA_ROOT/config/homepage/` (`services.yaml` for your links/widgets,
+`widgets.yaml` for the clock/weather, `settings.yaml` for layout/theme).
+`bootstrap.sh` writes a minimal starting version of these; weather
+location, background rotation, and other cosmetic touches are still yours
+to add by hand. See [gethomepage.dev](https://gethomepage.dev) for the
+config schema. After editing, `docker restart homepage` to pick up
+changes — Homepage doesn't hot-reload its config.
 
 ## Curious why any of this is built this way?
 
