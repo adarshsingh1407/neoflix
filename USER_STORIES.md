@@ -8,10 +8,10 @@ earlier ones passed.
 
 Scoped to the original POC pipeline (decisions 1-8: Jellyfin, Radarr,
 Sonarr, Prowlarr, qBittorrent, Jellyseerr, Bazarr). The optional add-ons
-from decisions 9-12 (Homepage, Ofelia, Uptime Kuma, Jellyfin Vue) aren't
-covered by these stories — Uptime Kuma's own status page is effectively
-its live health check, and the others have no acquisition/playback
-behavior to validate this way.
+from decisions 9-11 (Homepage, Ofelia, Uptime Kuma) aren't covered by
+these stories — Uptime Kuma's own status page is effectively its live
+health check, and the others have no acquisition/playback behavior to
+validate this way.
 
 Test content (per [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) decision #3):
 - **Movie:** *Big Buck Bunny* (Blender Foundation)

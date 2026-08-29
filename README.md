@@ -25,6 +25,37 @@ Everything else in the stack (Radarr, Sonarr, Prowlarr, qBittorrent,
 Bazarr) runs invisibly in the background — see [HLD.md](HLD.md) for that
 side of the flow.
 
+## Asking Claude directly
+
+If you're working with Claude Code in this repo, two skills under
+`.claude/skills/` cover the common cases instead of going through
+Jellyseerr/qBittorrent by hand:
+
+**`neoflix-add`** — add a movie or episode. Auto-grabs immediately, then
+checks the result against this stack's size/quality preferences in the
+background and swaps in a better release if the auto-grab didn't measure
+up.
+
+```
+neoflix-add ted lasso s04e05
+neoflix-add as tears go by 1988
+```
+
+Reports back and does nothing (no download) if the title hasn't
+aired/released yet, or if nothing valid is available for it.
+
+**`neoflix-fix-subs`** — subtitle troubleshooting for one title. Manual
+only — call it when something's actually broken (missing, won't show,
+out of sync, mistranslated), not as a routine check.
+
+```
+neoflix-fix-subs the subs for hard boiled are out of sync
+neoflix-fix-subs police story subtitles don't match the video
+```
+
+See [CLAUDE.md](CLAUDE.md) for the size caps and other house rules these
+skills apply.
+
 ## Status
 
 **Design complete, POC not yet validated.** All 13 architecture decisions are
@@ -62,17 +93,19 @@ pipeline (decisions 1-8):
 - **Jellyseerr** — unified search/request UI in front of Radarr/Sonarr/Jellyfin
 - **Bazarr** — automatic subtitles
 
-Optional extras added on top since (decisions 9-12), not needed for the
+Optional extras added on top since (decisions 9-11, 14), not needed for the
 core pipeline to work:
 
 - **Homepage** — one dashboard with links + live widgets for everything
-  above (`scripts/bootstrap.sh` writes a starting version — see SETUP.md)
+  above (`scripts/bootstrap.py` writes a starting version — see SETUP.md)
 - **Ofelia** — background scheduler; rotates Homepage's background hourly
   and regenerates library poster art nightly, both via the Jellyfin API
 - **Uptime Kuma** — monitors every web-facing service, feeds Homepage's
   status widget
-- **Jellyfin Vue** — optional alternative Jellyfin web client (unstable
-  upstream builds only)
+- **Lifecycle service** — polls Jellyseerr/Radarr/Sonarr and merges each
+  request into one Requested → Searching → Downloading → Available status,
+  feeding Homepage's Jellyseerr card so there's one glanceable answer to
+  "where's the thing I requested"
 
 All of the above, plus the core pipeline's account/connection setup, is
 what `scripts/bootstrap.py` automates (decision #13) — see SETUP.md.
@@ -88,15 +121,30 @@ structure and why it's kept separate from the git-tracked project folder.
 
 ## Running it
 
+Needs only Docker and Python — no other prerequisites, no shell scripts:
+
 ```sh
-cp .env.example .env                       # adjust PUID/PGID/TZ/DATA_ROOT if needed
-cp credentials.env.example credentials.env # fill in an admin login (decision #13)
-scripts/bootstrap.sh                       # creates folders, starts the stack, wires everything up
+python3 scripts/bootstrap.py   # macOS/Linux
+python scripts/bootstrap.py    # Windows
 ```
 
-That last command replaces what used to be a long list of manual per-app
-setup steps — see [SETUP.md](SETUP.md) for the full walkthrough (and its
-manual-setup appendix, if you'd rather click through it yourself).
+First run prompts for a data folder location and an admin login if it
+doesn't find `.env`/`credentials.env` yet, then creates folders, starts the
+stack, and wires everything up — PUID/PGID/timezone, download client,
+indexers, root folders, quality profile, Jellyfin/Jellyseerr/Bazarr/Uptime
+Kuma accounts and connections, a starter Homepage dashboard. That replaces
+what used to be a long list of manual per-app setup steps — see
+[SETUP.md](SETUP.md) for the full walkthrough (and its manual-setup
+appendix, if you'd rather click through it yourself).
 
 Then work through [USER_STORIES.md](USER_STORIES.md) to validate the
 pipeline and playback on iPhone.
+
+## TODO
+
+- **Verify cross-platform setup on an actual Windows machine.** The
+  bootstrap/setup tooling has been rewritten to support Windows and Linux
+  (see [CROSS_PLATFORM_PLAN.md](CROSS_PLATFORM_PLAN.md)) and every planned
+  code change is in, but none of it has actually been run on Windows —
+  everything here has only ever executed on macOS. Treat it as "should
+  work" until someone confirms a real run.

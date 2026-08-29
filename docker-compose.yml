@@ -129,6 +129,26 @@ services:
       - radarr
       - sonarr
 
+  lifecycle:
+    build: ./scripts/lifecycle
+    container_name: lifecycle
+    restart: unless-stopped
+    networks:
+      - neoflix-net
+    environment:
+      - JELLYSEERR_URL=http://jellyseerr:5055
+      - RADARR_URL=http://radarr:7878
+      - SONARR_URL=http://sonarr:8989
+      - JELLYSEERR_API_KEY=${JELLYSEERR_API_KEY}
+      - RADARR_API_KEY=${RADARR_API_KEY}
+      - SONARR_API_KEY=${SONARR_API_KEY}
+    ports:
+      - "8100:8100"
+    depends_on:
+      - jellyseerr
+      - radarr
+      - sonarr
+
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage
@@ -163,16 +183,16 @@ services:
       ofelia.job-run.rotate-background.network: "neoflix-net"
       ofelia.job-run.rotate-background.command: "/bin/sh /scripts/rotate-background.sh"
       ofelia.job-run.rotate-background.environment: '["JELLYFIN_URL=http://jellyfin:8096", "JELLYFIN_API_KEY=${JELLYFIN_API_KEY}"]'
-      ofelia.job-run.rotate-background.volume: '["/var/run/docker.sock:/var/run/docker.sock", "${PWD}/scripts/ofelia:/scripts:ro", "${DATA_ROOT}/config/homepage/images:/images"]'
+      ofelia.job-run.rotate-background.volume: '["/var/run/docker.sock:/var/run/docker.sock", "${NEOFLIX_REPO_ROOT}/scripts/ofelia:/scripts:ro", "${DATA_ROOT}/config/homepage/images:/images"]'
       ofelia.job-run.poster-grid.schedule: "0 4 * * *"
       ofelia.job-run.poster-grid.image: "alpine:latest"
       ofelia.job-run.poster-grid.network: "neoflix-net"
       ofelia.job-run.poster-grid.command: "/bin/sh /scripts/poster-grid.sh"
       ofelia.job-run.poster-grid.environment: '["JELLYFIN_URL=http://jellyfin:8096", "JELLYFIN_API_KEY=${JELLYFIN_API_KEY}"]'
-      ofelia.job-run.poster-grid.volume: '["${PWD}/scripts/ofelia:/scripts:ro"]'
+      ofelia.job-run.poster-grid.volume: '["${NEOFLIX_REPO_ROOT}/scripts/ofelia:/scripts:ro"]'
 
   uptime-kuma:
-    image: louislam/uptime-kuma:latest
+    image: louislam/uptime-kuma:2.5.0
     container_name: uptime-kuma
     restart: unless-stopped
     networks:
@@ -181,13 +201,4 @@ services:
       - ${DATA_ROOT}/config/uptime-kuma:/app/data
     ports:
       - "3001:3001"
-
-  jellyfin-vue:
-    image: ghcr.io/jellyfin/jellyfin-vue:unstable
-    container_name: jellyfin-vue
-    restart: unless-stopped
-    networks:
-      - neoflix-net
-    ports:
-      - "8090:80"
 

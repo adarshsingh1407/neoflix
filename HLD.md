@@ -23,7 +23,6 @@ flowchart TB
             jellyseerr["Jellyseerr<br>:5055"]
             jellyfin["Jellyfin<br>:8096"]
             bazarr["Bazarr<br>:6767"]
-            jfvue["Jellyfin Vue<br>:8090"]
         end
 
         data[("neoflix-data<br>downloads, media, config")]
@@ -47,14 +46,12 @@ flowchart TB
     jellyseerr -- request movie --> radarr
     jellyseerr -- request show --> sonarr
     jellyseerr -- auth and library check --> jellyfin
-    jfvue -- pure client, no data of its own --> jellyfin
     iphone -- stream --> jellyfin
     iphone -- search and request --> jellyseerr
     macbrowser -.admin UI.-> prowlarr
     macbrowser -.admin UI.-> radarr
     macbrowser -.admin UI.-> sonarr
     macbrowser -.admin UI.-> qbit
-    macbrowser -- browses --> jfvue
 ```
 
 (Bridge network is decision #5, the shared `neoflix-data` mount is
@@ -115,7 +112,7 @@ API can stand in for.
 
 ## Dashboard, scheduling & monitoring
 
-The optional add-ons from decisions 9-11. None of these sit in the
+The optional add-ons from decisions 9-11 and 14. None of these sit in the
 request→download→play path above — they're operational tooling layered on
 top of it.
 
@@ -129,10 +126,10 @@ flowchart TB
         bazarr["Bazarr<br>:6767"]
         qbit["qBittorrent<br>:8080"]
         prowlarr["Prowlarr<br>:9696"]
-        jfvue["Jellyfin Vue<br>:8090"]
         homepage["Homepage<br>:3000"]
         kuma["Uptime Kuma<br>:3001"]
         ofelia["Ofelia<br>(no port, label-driven)"]
+        lifecycle["Lifecycle service<br>:8100"]
     end
 
     docksock[("Docker socket<br>/var/run/docker.sock")]
@@ -145,6 +142,10 @@ flowchart TB
     homepage -- reads status via each app's API key --> bazarr
     homepage -- reads status via each app's API key --> qbit
     homepage -- reads public status page --> kuma
+    homepage -- reads merged request status --> lifecycle
+    lifecycle -- polls every 30s --> jellyseerr
+    lifecycle -- polls every 30s --> radarr
+    lifecycle -- polls every 30s --> sonarr
 
     ofelia -- hourly: pick random backdrop --> jellyfin
     ofelia -- writes new background image --> homepage
@@ -159,11 +160,10 @@ flowchart TB
     kuma -- polls HTTP every 60s --> bazarr
     kuma -- polls HTTP every 60s --> qbit
     kuma -- polls HTTP every 60s --> prowlarr
-    kuma -- polls HTTP every 60s --> jfvue
+    kuma -- polls HTTP every 60s --> homepage
 
     macbrowser -- one dashboard for everything --> homepage
     macbrowser -- admin setup, once --> kuma
-    macbrowser -- optional alt client --> jfvue
 ```
 
 Notes:
@@ -176,3 +176,7 @@ Notes:
 - Uptime Kuma polls independently of Homepage; Homepage only reads Kuma's
   public status page, it doesn't talk to the monitored apps on Kuma's
   behalf.
+- The lifecycle service (decision #14) is the one exception to "Homepage
+  reads each app directly with its own API key" — Homepage only talks to
+  `lifecycle`, which does its own polling of Jellyseerr/Radarr/Sonarr and
+  hands back an already-correlated, per-request status list.
