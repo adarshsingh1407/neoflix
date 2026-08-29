@@ -139,3 +139,12 @@ appendix, if you'd rather click through it yourself).
 
 Then work through [USER_STORIES.md](USER_STORIES.md) to validate the
 pipeline and playback on iPhone.
+
+## TODO
+
+- **Verify cross-platform setup on an actual Windows machine.** The
+  bootstrap/setup tooling has been rewritten to support Windows and Linux
+  (see [CROSS_PLATFORM_PLAN.md](CROSS_PLATFORM_PLAN.md)) and every planned
+  code change is in, but none of it has actually been run on Windows —
+  everything here has only ever executed on macOS. Treat it as "should
+  work" until someone confirms a real run.
