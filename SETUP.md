@@ -24,7 +24,6 @@ make more sense:
 | **Bazarr** *(optional)* | Automatically finds and downloads subtitles for anything you get. |
 | **Homepage** *(optional)* | One dashboard page with links to everything above, plus live status widgets. The setup script gives you a working starting version. |
 | **Uptime Kuma** *(optional)* | Watches all the other apps and tells you if one goes down. |
-| **Jellyfin Vue** *(optional)* | An alternative, more modern-looking way to browse/watch — same server as Jellyfin, just a different screen. Try it, remove it if you don't like it. |
 
 There's also **Ofelia**, a scheduler running quietly in the background —
 it has no web page of its own, nothing to set up, nothing to open.
@@ -36,9 +35,12 @@ you set up once and then mostly leave alone.
 
 - Docker Desktop installed and running (you should see its icon/whale in
   your system tray or menu bar — if it's not running, start it now)
-- Python 3 (macOS ships with this already — check with `python3 --version`).
-  Only needed for the setup script in step 5; it builds a throwaway
-  virtualenv for its own dependencies, nothing gets installed globally.
+- Python 3 — macOS/Linux: check with `python3 --version` (macOS ships with
+  this already). Windows: check with `python --version`, or install from
+  [python.org](https://www.python.org/downloads/) if missing (tick "Add
+  python.exe to PATH" during install). Only needed for the setup script in
+  step 5; it builds a throwaway virtualenv for its own dependencies, nothing
+  gets installed globally.
 
 ## 2. Get the files
 
@@ -49,62 +51,65 @@ cd neoflix
 
 (Or however you'd normally get a repo onto your machine.)
 
-## 3. Fill in your settings
+## 3. Settings and credentials
 
-This project reads its settings from a file called `.env`. Create your own
-copy from the template:
+There are two small config files, both gitignored so they never get
+committed: `.env` (where things live — `DATA_ROOT`, timezone, etc.) and
+`credentials.env` (one admin login, reused everywhere a new account gets
+created). You have two ways to fill these in — pick whichever you prefer:
+
+**Option A — answer a few prompts (recommended).** Skip straight to step 5
+and run the setup script. If it doesn't find these files yet, it'll ask you
+a handful of questions (where to store your media, an admin username/
+password, and whether to set up OpenSubtitles) and create both files for
+you. Everything else — `PUID`/`PGID`/timezone, folder creation, and every
+per-app account/connection — is figured out or wired up automatically from
+there; nothing else to fill in by hand.
+
+**Option B — fill the files in yourself first.** If you'd rather see
+exactly what's being set before anything runs (or you're scripting an
+unattended/repeatable setup):
 
 ```sh
 cp .env.example .env
-```
-
-Now open `.env` in any text editor and fill in four things:
-
-- **`PUID`** and **`PGID`** — two numbers that identify your user account to
-  Docker, so the files these apps create belong to you instead of some
-  internal system account. Get them by running:
-  ```sh
-  id -u   # this number goes in PUID
-  id -g   # this number goes in PGID
-  ```
-- **`TZ`** — your timezone, so schedules and air-dates line up correctly.
-  Example: `America/New_York`. On a Mac, you can find yours with:
-  ```sh
-  readlink /etc/localtime | sed 's#.*/zoneinfo/##'
-  ```
-- **`DATA_ROOT`** — a folder path **outside this repo folder** where all
-  your actual movies, shows, and app settings will be stored. For example
-  `/Users/yourname/neoflix-data`. It doesn't need to exist yet — you'll
-  create it in the next step. Keeping it outside the repo just means it
-  never accidentally gets swept up into git.
-
-## 4. Add your credentials
-
-This is the only manual account setup left — everything else in step 5 is
-scripted. Create your own copy of the credentials template:
-
-```sh
 cp credentials.env.example credentials.env
 ```
 
-Open `credentials.env` and fill in:
+Open `.env` and set **`DATA_ROOT`** — a folder path **outside this repo
+folder** where your actual movies, shows, and app settings will be stored
+(e.g. `/Users/yourname/neoflix-data` on macOS/Linux, or
+`C:/Users/yourname/neoflix-data` on Windows — use forward slashes either
+way). It doesn't need to exist yet. Keeping it outside the repo just means
+it never accidentally gets swept up into git. Leave `PUID`/`PGID`/`TZ`
+alone — step 5 detects and fills those in for you regardless of which
+option you pick here.
 
-- **`ADMIN_USERNAME`** / **`ADMIN_PASSWORD`** — one login, reused for every
-  app that needs a new account created (qBittorrent, Jellyfin, Uptime
-  Kuma). Pick a real password; these are reachable on your LAN.
-- **`OPENSUBTITLES_USERNAME`** / **`OPENSUBTITLES_PASSWORD`** *(optional)* —
-  Bazarr's subtitle provider needs a real
-  [OpenSubtitles.com](https://www.opensubtitles.com/en/users/newuser)
-  account. Leave blank to skip subtitles for now; add it later by hand in
-  Bazarr's UI if you change your mind.
+Open `credentials.env` and set **`ADMIN_USERNAME`**/**`ADMIN_PASSWORD`**
+(pick a real password — these are accounts reachable on your LAN) and
+optionally **`OPENSUBTITLES_USERNAME`**/**`OPENSUBTITLES_PASSWORD`** for
+Bazarr's subtitle provider (needs a real
+[OpenSubtitles.com](https://www.opensubtitles.com/en/users/newuser)
+account — leave both blank to skip for now, add it later by hand in
+Bazarr's UI if you change your mind).
 
-`credentials.env` is gitignored, same as `.env` — it never gets committed.
+## 4. Run the setup script
 
-## 5. Run the setup script
+macOS/Linux:
 
 ```sh
-scripts/bootstrap.sh
+python3 scripts/bootstrap.py
 ```
+
+Windows:
+
+```sh
+python scripts/bootstrap.py
+```
+
+If `.env`/`credentials.env` aren't set up yet (or credentials.env still has
+its placeholder password), this asks a few questions first (see step 3,
+option A) and creates them — otherwise it reads what's already there and
+skips straight to setup.
 
 This one command replaces the folder-creation and one-time-per-app setup
 that used to be manual: it creates the data folders, starts the stack,
@@ -112,17 +117,22 @@ waits for each app to generate its own API key, and then wires everything
 together — download client, indexers, root folders, a permissive quality
 profile, Jellyfin's admin account and libraries, Jellyseerr, Bazarr's
 Radarr/Sonarr connections, Uptime Kuma's monitors and status page, and a
-starter Homepage dashboard. It needs Python 3 (to build a throwaway
-virtualenv for its dependencies) alongside Docker. Safe to re-run if it
-fails partway — every step checks existing state first.
+starter Homepage dashboard. On first run it also builds itself a throwaway
+virtualenv for its Python dependencies — nothing gets installed globally,
+and nothing beyond Docker and Python needs to already be on your machine.
+Safe to re-run if it fails partway — every step checks existing state first.
 
 It prints a summary at the end, including anything it couldn't do for you.
-Two things are *never* automated, by design:
+A few things are *never* automated, by design:
 
 - **Bazarr's subtitle language profile** — stored in Bazarr's own database,
   not a file or documented API. One-time pick in **Settings → Languages**.
 - **The OpenSubtitles account itself** — has to be a real account you
   control; the script only wires in credentials you already have.
+- **Changing a password after the fact** — re-running with a different
+  `ADMIN_PASSWORD` in `credentials.env` doesn't rotate the password on
+  accounts that already exist (qBittorrent/Jellyfin/Uptime Kuma); change an
+  already-set password by hand, in each app's own UI.
 
 Check everything started:
 
@@ -136,7 +146,7 @@ You should see a row per app, all saying "Up" under status.
 doing?** See the [manual setup appendix](#manual-setup-appendix) at the
 bottom of this file — same steps, one app at a time.
 
-## 6. Try it out
+## 5. Try it out
 
 1. Open Jellyseerr, search for any movie, click **Request**
 2. Wait a minute or two, then check qBittorrent — you should see it start
@@ -144,7 +154,7 @@ bottom of this file — same steps, one app at a time.
 3. Once it finishes, open Jellyfin — it should just appear in your library,
    no extra steps needed
 
-If nothing happens after a few minutes and you ran `bootstrap.sh`, check its
+If nothing happens after a few minutes and you ran `bootstrap.py`, check its
 summary output for warnings first — it prints exactly what it couldn't do
 for you. If you set things up by hand, the two most common causes are:
 missing the Prowlarr → Apps link, or the quality profile being too strict
@@ -193,11 +203,16 @@ each one is actually for:
 | `http://localhost:6767` | **Bazarr** | Subtitle manager, if you're using it. |
 | `http://localhost:3001` | **Uptime Kuma** | Shows whether everything's actually up, if you're using it. |
 | `http://localhost:3000` | **Homepage** | One dashboard with links to everything above, if you're using it. |
-| `http://localhost:8090` | **Jellyfin Vue** | Alternative way to browse/watch — same server as Jellyfin, different screen. |
 
 `localhost` only works on the same computer running Docker. To reach these
 from your phone or another device on the same WiFi, swap `localhost` for
-that computer's local network address (on a Mac: `ipconfig getifaddr en0`).
+that computer's local network address:
+
+| OS | Command |
+|---|---|
+| macOS | `ipconfig getifaddr en0` |
+| Linux | `hostname -I` (or `ip addr`) |
+| Windows | `ipconfig` (look for "IPv4 Address" under your active adapter) |
 
 ## (Optional) Stop your computer's address from changing
 
@@ -209,15 +224,19 @@ happened to you.
 
 The reliable way to fix this is a **DHCP reservation** — you tell your
 router "always give this specific computer the same address," which is a
-one-time setting on the router itself, not on the Mac.
+one-time setting on the router itself, not on the machine running Docker.
 
-1. **Find your Mac's hardware address (MAC address)** — this uniquely
-   identifies your Mac's network hardware, separate from its current IP
-   address. Run:
-   ```sh
-   ifconfig en0 | grep ether
-   ```
-   You'll get something like `ether a1:b2:c3:d4:e5:f6` — that's it.
+1. **Find your computer's hardware address (MAC address)** — this uniquely
+   identifies its network hardware, separate from its current IP address.
+
+   | OS | Command |
+   |---|---|
+   | macOS | `ifconfig en0 \| grep ether` |
+   | Linux | `ip link show` (look for "link/ether") |
+   | Windows | `getmac` (or `ipconfig /all`, look for "Physical Address") |
+
+   You'll get something like `a1:b2:c3:d4:e5:f6` (Windows may show
+   `A1-B2-C3-D4-E5-F6` with dashes instead of colons — same thing).
 
 2. **Log into your router's admin page.** Usually this is done by typing
    an address like `192.168.1.1` or `192.168.0.1` into a browser (not
@@ -233,24 +252,26 @@ one-time setting on the router itself, not on the Mac.
 
 4. **Add a new reservation**, pairing the MAC address from step 1 with an
    IP address of your choice. The simplest option is to just reserve
-   whatever address your Mac currently has (check with
-   `ipconfig getifaddr en0`) — that way none of your existing bookmarks
-   need to change.
+   whatever address your computer currently has (see the table in the
+   previous section) — that way none of your existing bookmarks need to
+   change.
 
-5. **Save**, and restart your Mac's WiFi/network connection (or just
-   reboot) to confirm it picks up the reserved address.
+5. **Save**, and restart your network connection (or just reboot) to
+   confirm it picks up the reserved address.
 
 If you can't access your router's settings at all (e.g. it's managed by
-someone else, or your ISP locks it down), a fallback is setting a static
-IP directly on the Mac instead: **System Settings → Network → Wi-Fi (or
-Ethernet) → Details → TCP/IP → Configure IPv4: Manually.** This is less
+someone else, or your ISP locks it down), a fallback is setting a static IP
+directly on the machine instead — macOS: **System Settings → Network →
+Wi-Fi (or Ethernet) → Details → TCP/IP → Configure IPv4: Manually**;
+Windows: **Settings → Network & Internet → your adapter → IP assignment →
+Edit → Manual**; Linux varies by distro/network manager. This is less
 reliable though — if your router later happens to hand that same address
 to a different device, you'll get a conflict. The router-side reservation
 above is the better fix if you have any access to it at all.
 
 ## Manual setup appendix
 
-Everything below is what `scripts/bootstrap.sh` does for you automatically
+Everything below is what `scripts/bootstrap.py` does for you automatically
 (decision #13). Use this if you'd rather click through it yourself, need
 to fix up one specific app after the script partially failed, or are just
 curious what it's actually doing under the hood. Each app has its own web
@@ -374,7 +395,7 @@ Unlike every other app above, Homepage has **no setup wizard** — it's
 configured entirely by hand-editing YAML files under
 `$DATA_ROOT/config/homepage/` (`services.yaml` for your links/widgets,
 `widgets.yaml` for the clock/weather, `settings.yaml` for layout/theme).
-`bootstrap.sh` writes a minimal starting version of these; weather
+`bootstrap.py` writes a minimal starting version of these; weather
 location, background rotation, and other cosmetic touches are still yours
 to add by hand. See [gethomepage.dev](https://gethomepage.dev) for the
 config schema. After editing, `docker restart homepage` to pick up

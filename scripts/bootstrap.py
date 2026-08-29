@@ -1,27 +1,116 @@
 #!/usr/bin/env python3
 """
-One-time post-setup automation for neoflix (see SETUP.md step 6 and
-DESIGN_DECISIONS.md decision #13). Run via scripts/bootstrap.sh, not
-directly -- that wrapper sets up a venv with the right dependencies first.
+One-time post-setup automation for neoflix (see SETUP.md and
+DESIGN_DECISIONS.md decision #13). Run directly:
+
+    python3 scripts/bootstrap.py   (macOS/Linux)
+    python scripts/bootstrap.py    (Windows)
+
+On first run it creates its own throwaway virtualenv (.bootstrap-venv) and
+installs scripts/requirements.txt into it -- nothing gets installed
+globally, and nothing but Docker and Python need to already be installed.
 
 Replaces the manual "create an account / paste an API key into every app"
 steps with scripted calls to each app's own API, using API keys read
-straight off disk. The only manual input is credentials.env.
+straight off disk. If .env/credentials.env don't exist yet (or
+credentials.env still has a placeholder ADMIN_PASSWORD), prompts for the
+values interactively and writes them; otherwise reads them straight off
+disk, so the same two files also work for non-interactive/scripted setups.
 
 Safe to re-run: every step checks existing state before changing anything.
 """
 
-import json
-import re
+import os
+import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+VENV_DIR = REPO_ROOT / ".bootstrap-venv"
+ENV_PATH = REPO_ROOT / ".env"
+CREDENTIALS_PATH = REPO_ROOT / "credentials.env"
+
+
+# ---------------------------------------------------------------------------
+# Docker preflight -- fail fast, before spending time on venv/pip work, if
+# the one hard external dependency isn't there or isn't running. Checked
+# here (not just left to "docker compose up -d" failing later) because a
+# missing/unstarted Docker Desktop is the single most likely first-run
+# problem, especially on Windows (PATH not refreshed after install, or
+# Docker Desktop not started yet).
+# ---------------------------------------------------------------------------
+
+def _check_docker():
+    if shutil.which("docker") is None:
+        sys.exit(
+            "Docker not found on PATH. Install Docker Desktop "
+            "(https://www.docker.com/products/docker-desktop/), make sure "
+            "it's running, and try again."
+        )
+    r = subprocess.run(["docker", "info"], capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(
+            "Docker is installed but doesn't seem to be running -- start "
+            "Docker Desktop (or the Docker daemon) and try again."
+        )
+
+
+_check_docker()
+
+
+# ---------------------------------------------------------------------------
+# Self-bootstrapping virtualenv -- replaces the old scripts/bootstrap.sh
+# wrapper so there's no shell layer at all: this file is the only thing you
+# ever run, on every platform. Everything below this needs only stdlib,
+# since requests/yaml/tzlocal aren't installed in the outer interpreter yet.
+# ---------------------------------------------------------------------------
+
+def _in_venv():
+    return sys.prefix != sys.base_prefix
+
+
+def _venv_python():
+    bindir = "Scripts" if os.name == "nt" else "bin"
+    exe = "python.exe" if os.name == "nt" else "python"
+    return VENV_DIR / bindir / exe
+
+
+def _ensure_venv_and_reexec():
+    if _in_venv():
+        return
+    if not VENV_DIR.exists():
+        print("[bootstrap] Creating a virtualenv for setup dependencies (one-time)...")
+        try:
+            subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
+        except subprocess.CalledProcessError:
+            sys.exit(
+                "Failed to create a virtualenv. On Debian/Ubuntu you may need "
+                "the venv module installed separately, e.g.:\n"
+                "  sudo apt install python3-venv"
+            )
+    vpy = str(_venv_python())
+    subprocess.run([vpy, "-m", "pip", "install", "--quiet", "--upgrade", "pip"], check=True)
+    subprocess.run(
+        [vpy, "-m", "pip", "install", "--quiet", "-r", str(REPO_ROOT / "scripts" / "requirements.txt")],
+        check=True,
+    )
+    sys.stdout.flush()
+    os.execv(vpy, [vpy, str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
+_ensure_venv_and_reexec()
+
+# Everything past this point can assume it's running inside .bootstrap-venv
+# with scripts/requirements.txt already installed.
+
+import getpass
+import json
+import re
+import time
 
 import requests
 import yaml
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 WARNINGS = []
 
@@ -48,16 +137,174 @@ def load_env_file(path):
     return values
 
 
-ENV = {**load_env_file(REPO_ROOT / ".env"), **load_env_file(REPO_ROOT / "credentials.env")}
+def _set_env_key(path, key, value, only_if_absent=False):
+    """Create or update `path`, setting KEY=value. If only_if_absent, an
+    already-present value is left untouched -- used for user preferences
+    (PUID/PGID/TZ) that shouldn't get silently reverted on a re-run, as
+    opposed to derived values (NEOFLIX_REPO_ROOT, JELLYFIN_API_KEY) that
+    should always reflect current reality."""
+    text = path.read_text() if path.exists() else ""
+    pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
+    existing = pattern.search(text)
+    if existing and only_if_absent:
+        return
+    line = f"{key}={value}"
+    if existing:
+        text = pattern.sub(line, text, count=1)
+    else:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += line + "\n"
+    with path.open("w", newline="\n") as f:
+        f.write(text)
+
+
+# ---------------------------------------------------------------------------
+# Interactive first-run wizard -- only runs when .env/credentials.env are
+# missing, or credentials.env still has the placeholder ADMIN_PASSWORD.
+# Additive, not a replacement: the *.env.example files and hand-editing
+# still work exactly as before for scripted/non-interactive setups.
+# ---------------------------------------------------------------------------
+
+def _prompt(question, default=None):
+    suffix = f" [{default}]" if default else ""
+    while True:
+        answer = input(f"{question}{suffix}: ").strip()
+        if answer:
+            return answer
+        if default is not None:
+            return default
+
+
+def _prompt_yes_no(question, default=False):
+    suffix = " [Y/n]" if default else " [y/N]"
+    answer = input(f"{question}{suffix}: ").strip().lower()
+    if not answer:
+        return default
+    return answer.startswith("y")
+
+
+def _prompt_password(question):
+    while True:
+        pw1 = getpass.getpass(f"{question}: ")
+        if not pw1:
+            continue
+        pw2 = getpass.getpass("  confirm: ")
+        if pw1 == pw2:
+            return pw1
+        print("  those didn't match -- try again")
+
+
+def _prompt_data_root():
+    default = str(Path.home() / "neoflix-data")
+    while True:
+        answer = _prompt("Where should movies/shows/app config live (DATA_ROOT)?", default)
+        candidate = Path(answer).expanduser().resolve()
+        if candidate == REPO_ROOT or REPO_ROOT in candidate.parents:
+            print(
+                f"  {candidate} is inside this repo folder -- pick a location "
+                "outside it (it must never get swept up into git; see SETUP.md)."
+            )
+            continue
+        return candidate.as_posix()
+
+
+_DATA_ROOT_PLACEHOLDER = "/Users/YOUR_USERNAME/neoflix-data"
+
+
+def _needs_env_wizard():
+    # Also re-triggers if .env exists but DATA_ROOT is still .env.example's
+    # placeholder -- symmetric with credentials.env's ADMIN_PASSWORD check
+    # below, for someone who copied the template and didn't finish editing.
+    env = load_env_file(ENV_PATH)
+    return not ENV_PATH.exists() or env.get("DATA_ROOT", "") in ("", _DATA_ROOT_PLACEHOLDER)
+
+
+def _needs_credentials_wizard():
+    creds = load_env_file(CREDENTIALS_PATH)
+    return creds.get("ADMIN_PASSWORD", "") in ("", "changeme")
+
+
+def _run_config_wizard(need_env, need_credentials):
+    print("[bootstrap] First-time setup -- a few questions to create the config files.")
+    print("[bootstrap] (Ctrl-C cancels at any point; nothing is written until you're done.)")
+    print()
+
+    data_root = None
+    username = password = None
+    os_username = os_password = ""
+
+    try:
+        if need_env:
+            data_root = _prompt_data_root()
+
+        if need_credentials:
+            existing = load_env_file(CREDENTIALS_PATH)
+            username = _prompt(
+                "Admin username (reused for qBittorrent/Jellyfin/Uptime Kuma)",
+                existing.get("ADMIN_USERNAME") or "admin",
+            )
+            password = _prompt_password("Admin password")
+
+            os_username = existing.get("OPENSUBTITLES_USERNAME", "")
+            os_password = existing.get("OPENSUBTITLES_PASSWORD", "")
+            if not (os_username and os_password):
+                if _prompt_yes_no("Set up automatic subtitles via OpenSubtitles.com?", default=False):
+                    os_username = _prompt("OpenSubtitles.com username")
+                    os_password = _prompt_password("OpenSubtitles.com password")
+    except (KeyboardInterrupt, EOFError):
+        sys.exit("\n[bootstrap] Setup cancelled -- no files were written.")
+
+    if need_env:
+        _set_env_key(ENV_PATH, "DATA_ROOT", data_root)
+        log(".env: saved")
+
+    if need_credentials:
+        _set_env_key(CREDENTIALS_PATH, "ADMIN_USERNAME", username)
+        _set_env_key(CREDENTIALS_PATH, "ADMIN_PASSWORD", password)
+        _set_env_key(CREDENTIALS_PATH, "OPENSUBTITLES_USERNAME", os_username)
+        _set_env_key(CREDENTIALS_PATH, "OPENSUBTITLES_PASSWORD", os_password)
+        log("credentials.env: saved")
+
+    print()
+
+
+def _ensure_config_files():
+    need_env = _needs_env_wizard()
+    need_credentials = _needs_credentials_wizard()
+    if not need_env and not need_credentials:
+        return
+
+    if not sys.stdin.isatty():
+        missing = []
+        if need_env:
+            missing.append(".env (copy .env.example and fill it in)")
+        if need_credentials:
+            missing.append("credentials.env with a real ADMIN_PASSWORD (copy credentials.env.example and fill it in)")
+        sys.exit("Missing setup: " + "; ".join(missing) + ".")
+
+    _run_config_wizard(need_env, need_credentials)
+
+
+_ensure_config_files()
+
+ENV = {**load_env_file(ENV_PATH), **load_env_file(CREDENTIALS_PATH)}
+
+# A Windows-pasted backslash DATA_ROOT would otherwise land inside the
+# Ofelia volume label's JSON-array string and break parsing (backslash is a
+# JSON escape character) -- normalize to forward slashes, Docker Desktop
+# accepts that form natively on every platform.
+if "\\" in ENV["DATA_ROOT"]:
+    _normalized = Path(ENV["DATA_ROOT"]).expanduser().as_posix()
+    _set_env_key(ENV_PATH, "DATA_ROOT", _normalized)
+    ENV["DATA_ROOT"] = _normalized
+    log(".env: normalized DATA_ROOT to forward-slash form")
 
 DATA_ROOT = Path(ENV["DATA_ROOT"]).expanduser()
 ADMIN_USERNAME = ENV.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = ENV.get("ADMIN_PASSWORD", "")
 OPENSUBTITLES_USERNAME = ENV.get("OPENSUBTITLES_USERNAME", "")
 OPENSUBTITLES_PASSWORD = ENV.get("OPENSUBTITLES_PASSWORD", "")
-
-if not ADMIN_PASSWORD or ADMIN_PASSWORD == "changeme":
-    sys.exit("credentials.env: set a real ADMIN_PASSWORD before running bootstrap.")
 
 JELLYFIN_CLIENT_HEADER = (
     'MediaBrowser Client="neoflix-bootstrap", Device="bootstrap-script", '
@@ -100,20 +347,48 @@ def wait_for_file_containing(path, pattern, timeout=120):
 
 
 # ---------------------------------------------------------------------------
-# Step 1: folders (replaces SETUP.md step 4)
+# Step 1: PUID/PGID/TZ auto-detection, folders (replaces SETUP.md's old
+# manual `id -u`/`readlink` steps and folder-creation step)
 # ---------------------------------------------------------------------------
+
+def ensure_puid_pgid_tz():
+    if hasattr(os, "getuid"):
+        puid, pgid = str(os.getuid()), str(os.getgid())
+    else:
+        # No uid/gid concept on Windows; this is linuxserver.io's own
+        # documented default, and Docker Desktop's Windows backend
+        # translates bind-mount permissions itself, so it isn't
+        # load-bearing there the way it is on macOS/Linux.
+        puid, pgid = "1000", "1000"
+    _set_env_key(ENV_PATH, "PUID", puid, only_if_absent=True)
+    _set_env_key(ENV_PATH, "PGID", pgid, only_if_absent=True)
+
+    try:
+        from tzlocal import get_localzone_name
+        tz = get_localzone_name() or "Etc/UTC"
+    except Exception as e:
+        warn(f"Could not auto-detect timezone ({e}) -- defaulting to Etc/UTC, edit TZ in .env by hand if that's wrong")
+        tz = "Etc/UTC"
+    _set_env_key(ENV_PATH, "TZ", tz, only_if_absent=True)
+
 
 def create_folders():
     log(f"Creating data folders under {DATA_ROOT}")
-    for d in ("movies", "tv", "music", "books", "audiobooks", "comics"):
-        (DATA_ROOT / "downloads" / d).mkdir(parents=True, exist_ok=True)
-    for d in ("movies", "tv", "anime", "music", "books", "audiobooks", "comics"):
-        (DATA_ROOT / "media" / d).mkdir(parents=True, exist_ok=True)
-    for app in (
-        "jellyfin", "sonarr", "radarr", "prowlarr", "qbittorrent",
-        "jellyseerr", "bazarr", "homepage", "uptime-kuma",
-    ):
-        (DATA_ROOT / "config" / app).mkdir(parents=True, exist_ok=True)
+    try:
+        for d in ("movies", "tv", "music", "books", "audiobooks", "comics"):
+            (DATA_ROOT / "downloads" / d).mkdir(parents=True, exist_ok=True)
+        for d in ("movies", "tv", "anime", "music", "books", "audiobooks", "comics"):
+            (DATA_ROOT / "media" / d).mkdir(parents=True, exist_ok=True)
+        for app in (
+            "jellyfin", "sonarr", "radarr", "prowlarr", "qbittorrent",
+            "jellyseerr", "bazarr", "homepage", "uptime-kuma",
+        ):
+            (DATA_ROOT / "config" / app).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        sys.exit(
+            f"Couldn't create data folders under {DATA_ROOT}: {e}\n"
+            "Check that DATA_ROOT in .env is a valid, writable path."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -194,9 +469,13 @@ def setup_qbittorrent():
 
 def setup_prowlarr(prowlarr_key, radarr_key, sonarr_key):
     log("Configuring Prowlarr")
-    wait_for_http("http://localhost:9696")
     base = "http://localhost:9696/api/v1"
     headers = {"X-Api-Key": prowlarr_key}
+    # The root page can respond (wait_for_http's status_code < 500 check)
+    # before Prowlarr's API/DB layer is actually warmed up -- wait on an
+    # authenticated API endpoint instead, same fix as the Radarr/Sonarr
+    # readiness race already handled in main().
+    wait_for_http(f"{base}/system/status", headers=headers)
 
     existing_indexers = {i["name"] for i in requests.get(f"{base}/indexer", headers=headers).json()}
     schema = requests.get(f"{base}/indexer/schema", headers=headers).json()
@@ -432,6 +711,10 @@ def setup_jellyfin():
                 "http://localhost:8096/Library/VirtualFolders",
                 headers=auth_headers,
                 params={"name": lib_name, "collectionType": collection_type, "paths": path, "refreshLibrary": "true"},
+                # Without this, Jellyfin defaults new libraries to no internet metadata lookups
+                # and no filesystem watching -- new imports sit with bare filenames until a
+                # scheduled scan (or manual refresh) happens to pull TMDB data.
+                json={"LibraryOptions": {"EnableInternetProviders": True, "EnableRealtimeMonitor": True}},
             )
             if r.ok:
                 log(f"Jellyfin: added library '{lib_name}'")
@@ -459,13 +742,7 @@ def setup_jellyfin():
 def save_jellyfin_api_key(api_key):
     if not api_key:
         return
-    env_path = REPO_ROOT / ".env"
-    text = env_path.read_text()
-    if re.search(r"^JELLYFIN_API_KEY=.*$", text, re.MULTILINE):
-        text = re.sub(r"^JELLYFIN_API_KEY=.*$", f"JELLYFIN_API_KEY={api_key}", text, flags=re.MULTILINE)
-    else:
-        text += f"\nJELLYFIN_API_KEY={api_key}\n"
-    env_path.write_text(text)
+    _set_env_key(ENV_PATH, "JELLYFIN_API_KEY", api_key)
     log(".env: saved JELLYFIN_API_KEY")
 
     # Ofelia's poster-grid/rotate-background jobs get JELLYFIN_API_KEY baked
@@ -478,6 +755,25 @@ def save_jellyfin_api_key(api_key):
         warn("ofelia: failed to recreate with the new JELLYFIN_API_KEY -- poster-grid/rotate-background jobs will fail until you run 'docker compose up -d ofelia' yourself")
     else:
         log("ofelia: recreated so poster-grid/rotate-background jobs pick up JELLYFIN_API_KEY")
+
+
+def save_lifecycle_api_keys(radarr_key, sonarr_key, jellyseerr_key):
+    if not (radarr_key and sonarr_key and jellyseerr_key):
+        warn("lifecycle: missing one or more API keys -- skipping, request-lifecycle widget won't work until you set RADARR_API_KEY/SONARR_API_KEY/JELLYSEERR_API_KEY in .env and run 'docker compose up -d lifecycle' yourself")
+        return
+    _set_env_key(ENV_PATH, "RADARR_API_KEY", radarr_key)
+    _set_env_key(ENV_PATH, "SONARR_API_KEY", sonarr_key)
+    _set_env_key(ENV_PATH, "JELLYSEERR_API_KEY", jellyseerr_key)
+    log(".env: saved RADARR_API_KEY, SONARR_API_KEY, JELLYSEERR_API_KEY")
+
+    # Same situation as JELLYFIN_API_KEY above: lifecycle's environment block
+    # is baked in at container-creation time, and docker_compose_up already
+    # started it (with these keys blank) before any of them existed.
+    r = run(["docker", "compose", "up", "-d", "lifecycle"], cwd=REPO_ROOT)
+    if r.returncode != 0:
+        warn("lifecycle: failed to recreate with the new API keys -- run 'docker compose up -d lifecycle' yourself")
+    else:
+        log("lifecycle: recreated so it picks up its API keys")
 
 
 # ---------------------------------------------------------------------------
@@ -574,7 +870,7 @@ MONITORS = [
     ("Jellyseerr", "http://jellyseerr:5055"),
     ("qBittorrent", "http://qbittorrent:8080"),
     ("Prowlarr", "http://prowlarr:9696"),
-    ("Jellyfin Vue", "http://jellyfin-vue:80"),
+    ("Homepage", "http://homepage:3000"),
 ]
 
 
@@ -629,15 +925,21 @@ def setup_homepage(keys):
         {"Watch": [
             {"Jellyfin": {"href": "http://localhost:8096", "icon": "jellyfin.png",
                           "widget": {"type": "jellyfin", "url": "http://jellyfin:8096", "key": keys["jellyfin"]}}},
-            {"Jellyfin Vue": {"href": "http://localhost:8090", "icon": "jellyfin.png"}},
             {"Jellyseerr": {"href": "http://localhost:5055", "icon": "jellyseerr.png",
-                            "widget": {"type": "jellyseerr", "url": "http://jellyseerr:5055", "key": keys["jellyseerr"]}}},
+                            "widgets": [
+                                {"type": "seerr", "url": "http://jellyseerr:5055", "key": keys["jellyseerr"]},
+                                {"type": "customapi", "url": "http://lifecycle:8100/status",
+                                 "display": "dynamic-list",
+                                 "mappings": {"items": "items", "name": "name", "label": "label"}},
+                            ]}},
         ]},
         {"Automation": [
             {"Radarr": {"href": "http://localhost:7878", "icon": "radarr.png",
-                        "widget": {"type": "radarr", "url": "http://radarr:7878", "key": keys["radarr"]}}},
+                        "widget": {"type": "radarr", "url": "http://radarr:7878", "key": keys["radarr"],
+                                   "fields": ["missing", "movies"]}}},
             {"Sonarr": {"href": "http://localhost:8989", "icon": "sonarr.png",
-                        "widget": {"type": "sonarr", "url": "http://sonarr:8989", "key": keys["sonarr"]}}},
+                        "widget": {"type": "sonarr", "url": "http://sonarr:8989", "key": keys["sonarr"],
+                                   "fields": ["wanted", "series"]}}},
             {"Prowlarr": {"href": "http://localhost:9696", "icon": "prowlarr.png",
                           "widget": {"type": "prowlarr", "url": "http://prowlarr:9696", "key": keys["prowlarr"]}}},
             {"Bazarr": {"href": "http://localhost:6767", "icon": "bazarr.png",
@@ -674,6 +976,8 @@ def setup_homepage(keys):
 # ---------------------------------------------------------------------------
 
 def main():
+    ensure_puid_pgid_tz()
+    _set_env_key(ENV_PATH, "NEOFLIX_REPO_ROOT", REPO_ROOT.as_posix())
     create_folders()
     docker_compose_up()
 
@@ -694,6 +998,7 @@ def main():
     jellyfin_key = setup_jellyfin()
     save_jellyfin_api_key(jellyfin_key)
     jellyseerr_key = setup_jellyseerr(radarr_key, radarr_profile_id, sonarr_key, sonarr_profile_id)
+    save_lifecycle_api_keys(radarr_key, sonarr_key, jellyseerr_key)
 
     try:
         setup_uptime_kuma()

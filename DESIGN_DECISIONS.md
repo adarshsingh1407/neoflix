@@ -295,7 +295,7 @@ this compose file again:
 
 **Decision:** `ghcr.io/gethomepage/homepage:latest`, one dashboard with
 quick-launch links plus live widgets for Jellyfin, Jellyseerr, Radarr,
-Sonarr, Bazarr, qBittorrent, Uptime Kuma (#11), and Jellyfin Vue (#12).
+Sonarr, Bazarr, qBittorrent, and Uptime Kuma (#11).
 
 **Rationale:** solves "which port was that again" cheaply — one more
 container, reuses each app's existing API key (already generated on first
@@ -356,10 +356,15 @@ mismatch.
 
 **Decision:** `louislam/uptime-kuma:latest`. Monitors all 8 web-facing
 services over HTTP on the internal bridge network (`jellyfin`, `radarr`,
-`sonarr`, `bazarr`, `prowlarr`, `qbittorrent`, `jellyseerr`, `jellyfin-vue`),
+`sonarr`, `bazarr`, `prowlarr`, `qbittorrent`, `jellyseerr`, `homepage`),
 backed by a public status page (slug `default`) that Homepage's widget
 reads — Uptime Kuma has no stable full API, so status-page scraping is the
 supported integration path.
+
+**Update:** originally monitored `jellyfin-vue` instead of `homepage` —
+swapped when decision #12 was reversed and Homepage itself needed
+coverage instead (closing the exact blind spot that let the whole stack
+go down silently after a Docker Desktop restart with nothing catching it).
 
 **Rationale:** closes the gap between "links dashboard" and "actually know
 if something's down" — Homepage's per-service widgets show data *from*
@@ -374,20 +379,26 @@ connection.
 
 ---
 
-### 12. Alternative Jellyfin client (Jellyfin Vue) — DECIDED
+### 12. Alternative Jellyfin client (Jellyfin Vue) — REMOVED
 
-**Decision:** `ghcr.io/jellyfin/jellyfin-vue:unstable`, published on host
-port `8090` (`8080` was already taken by qBittorrent's WebUI).
+**Original decision:** `ghcr.io/jellyfin/jellyfin-vue:unstable`, published
+on host port `8090` (`8080` was already taken by qBittorrent's WebUI).
 
-**Rationale:** optional modern alternative to the stock Jellyfin web
-client, low cost to try — it's a pure client with no separate data/backend
-of its own, just one compose block to remove if not kept.
+**Original rationale:** optional modern alternative to the stock Jellyfin
+web client, low cost to try — it's a pure client with no separate
+data/backend of its own, just one compose block to remove if not kept.
 
-**Caveat:** upstream has no stable release, only unstable/master-branch
-builds — a genuinely different maintenance posture than every other
-`:latest`-tagged service in this stack, where `:latest` still means "last
-tagged release." Kept as an opt-in alongside the default Jellyfin web
-client, not a replacement for it.
+**Caveat that held true:** upstream has no stable release, only
+unstable/master-branch builds — a genuinely different maintenance posture
+than every other `:latest`-tagged service in this stack, where `:latest`
+still means "last tagged release."
+
+**Why removed:** never used past the initial try, and it added nothing
+Jellyfin's own built-in web client didn't already cover — same content,
+same server, just a second screen to maintain. Container, image, compose
+block, Homepage card, and Uptime Kuma monitor all removed together;
+Uptime Kuma's freed-up coverage was redirected to monitoring Homepage
+itself instead (see decision #11's update).
 
 ---
 
@@ -398,13 +409,12 @@ manually create four separate accounts and wire up seven apps by hand
 before anything worked — the "one command and you're done" promise of
 `docker compose up -d` didn't actually hold past the containers starting.
 
-**Decision:** a single script (`scripts/bootstrap.sh` → `scripts/bootstrap.py`)
-that replaces SETUP.md's old step 4 (folder creation) and step 6
-(per-app manual setup) entirely. The only manual input left is
-`credentials.env` (gitignored, same pattern as `.env` — decision #7): one
-admin username/password reused everywhere a new account gets created
-(qBittorrent, Jellyfin, Uptime Kuma), plus an optional real OpenSubtitles
-account for Bazarr.
+**Decision:** a single script, `scripts/bootstrap.py`, that replaces
+SETUP.md's old step 4 (folder creation) and step 6 (per-app manual setup)
+entirely. The only manual input left is `credentials.env` (gitignored, same
+pattern as `.env` — decision #7): one admin username/password reused
+everywhere a new account gets created (qBittorrent, Jellyfin, Uptime Kuma),
+plus an optional real OpenSubtitles account for Bazarr.
 
 **What makes this feasible at all:** every `*arr`-family app (Radarr,
 Sonarr, Prowlarr) writes its own auto-generated API key to `config.xml` on
@@ -469,26 +479,172 @@ needs `docker logs`/`docker compose up -d` and direct filesystem access to
 `$DATA_ROOT` for both folder creation and reading each app's generated
 config — a throwaway container would need the docker socket bind-mounted
 just to shell back out to the CLI it's trying to avoid depending on.
-`scripts/bootstrap.sh` builds a throwaway Python virtualenv first so
-nothing installs globally.
+`scripts/bootstrap.py` is self-bootstrapping: on first run it creates its
+own throwaway virtualenv (`.bootstrap-venv`) and re-execs itself inside it,
+so nothing installs globally and there's no separate shell wrapper to run
+first — the same one command works on every platform (see the
+cross-platform follow-up below).
 
 **Follow-up, closed:** Ofelia's `rotate-background`/`poster-grid` scripts
 (decision #10) originally lived only in `$DATA_ROOT/config/ofelia/`,
 outside git — a fresh clone's Ofelia container had no script files to run.
 Moved into `scripts/ofelia/` (git-tracked) with both job labels' `volume`
-mount pointing at `${PWD}/scripts/ofelia` instead of
-`${DATA_ROOT}/config/ofelia`. `rotate-background.sh` also had the Jellyfin
-API key hardcoded inline (predates decision #10's `JELLYFIN_API_KEY`
-externalization, and wasn't caught at the time since it's a separate file
-from the compose label the earlier fix touched) — fixed to read
-`JELLYFIN_URL`/`JELLYFIN_API_KEY` from its job's `environment` label, same
-as `poster-grid` already did.
+mount originally pointing at `${PWD}/scripts/ofelia` instead of
+`${DATA_ROOT}/config/ofelia` (superseded by `${NEOFLIX_REPO_ROOT}` below).
+`rotate-background.sh` also had the Jellyfin API key hardcoded inline
+(predates decision #10's `JELLYFIN_API_KEY` externalization, and wasn't
+caught at the time since it's a separate file from the compose label the
+earlier fix touched) — fixed to read `JELLYFIN_URL`/`JELLYFIN_API_KEY` from
+its job's `environment` label, same as `poster-grid` already did.
+
+**Follow-up, closed — cross-platform support:** the original automation was
+Mac-only in several places: `scripts/bootstrap.sh` (bash, Unix-only venv
+paths), manual `id -u`/`id -g`/`readlink /etc/localtime` steps for
+`PUID`/`PGID`/`TZ` in SETUP.md, and the `${PWD}` used in Ofelia's volume
+labels above (a POSIX shell auto-export that PowerShell/cmd.exe don't set,
+so it silently resolved blank there). Addressed together, since Windows
+support was the point of all of them:
+
+- `scripts/bootstrap.sh` deleted — `bootstrap.py` builds and re-execs into
+  its own virtualenv itself (see above). One command everywhere:
+  `python3 scripts/bootstrap.py` (macOS/Linux) / `python scripts/bootstrap.py`
+  (Windows).
+- `PUID`/`PGID`/`TZ` are auto-detected and written into `.env` (only if not
+  already set, so a manual override survives re-runs) — `os.getuid()`/
+  `os.getgid()` where available, `1000`/`1000` (linuxserver.io's own
+  default) on Windows where the concept doesn't exist; timezone via the
+  `tzlocal` package, which reads `/etc/localtime` on macOS/Linux and the
+  registry on Windows.
+- `${PWD}` in Ofelia's labels replaced with `${NEOFLIX_REPO_ROOT}`, a value
+  `bootstrap.py` computes and writes into `.env` itself on every run —
+  independent of shell/OS entirely, since Compose reads `.env` directly
+  rather than inheriting shell-exported variables.
+- A Docker-availability preflight check (fails fast with a clear message if
+  Docker isn't on `PATH` or isn't running, rather than a raw traceback three
+  steps later) and an interactive first-run wizard (prompts for `DATA_ROOT`
+  and the admin login when `.env`/`credentials.env` aren't set up yet, or
+  when `credentials.env` still has a placeholder password) were added at
+  the same time — same goal of a frictionless first run, `input()`/
+  `getpass` only, no new dependency.
+- **Migration note for this repo's own already-running instance (and any
+  other pre-existing deployment):** its `.env` predates
+  `NEOFLIX_REPO_ROOT` — run `bootstrap.py` once after pulling this change,
+  before the next plain `docker compose up -d`, or Ofelia's mounts break
+  the same way the `${PWD}` bug did, just for an existing install instead
+  of a fresh one.
+- Full design/rollout discussion: `CROSS_PLATFORM_PLAN.md`.
+
+---
+
+### 14. Request lifecycle tracking (custom service) — DECIDED
+
+**Problem:** Homepage's dashboard showed request/download status split
+across three places — Jellyseerr's own Pending/Approved/Completed counts,
+plus two `customapi` widgets bolted on showing Radarr's and Sonarr's raw
+download queues (unlabeled rows, a hardcoded "No items found" empty state —
+a genuine Homepage platform limitation, not a config gap). No single place
+answered "where is the thing I requested, right now."
+
+**Decision:** a small custom service, `scripts/lifecycle/` (Python/Flask),
+that polls Jellyseerr, Radarr, and Sonarr every 30s, correlates each
+request by `tmdbId`/`tvdbId`, and derives one lifecycle stage per item —
+Requested → Searching → Downloading → Importing → Available (or Partially
+Available for shows, or Declined) — cached in memory and served at
+`GET /status` for Homepage's `customapi` widget to consume. Movies use
+Radarr's `hasFile` flag; shows roll up to "X/Y episodes" from Sonarr's
+episode-file-count statistics rather than showing per-episode rows, to keep
+the card glanceable. When nothing's active, the service itself returns a
+friendly placeholder item — this is what actually fixes the generic
+"No items found" text, since Homepage's hardcoded string only appears when
+the *mapped* list is empty, and this service's list never is.
+
+**Follow-up, closed — library items added outside Jellyseerr:** the first
+version only surfaced items with a Jellyseerr request behind them, so
+anything added straight to Radarr/Sonarr (bypassing Jellyseerr entirely)
+never appeared, even once fully downloaded — noticed immediately when
+several already-available movies were missing from the card. Fixed by a
+second pass in the same poll: any Radarr movie/Sonarr series *not* matched
+to a Jellyseerr request gets appended once it has a file, as Available/
+Partially Available. `WIDGET_LIMIT` raised from 6 to 12 accordingly, since
+the card's job is now "everything in the library plus in-flight requests,"
+not just active requests.
+
+**Follow-up, closed — unbounded growth as the library grows:** the flat
+alphabetical sort meant that once the library exceeded `WIDGET_LIMIT`, an
+arbitrary (alphabetically-late) slice of "Available" titles silently
+disappeared, and would keep changing unpredictably as more got added.
+Split the output into two differently-behaved groups instead: **in-flight**
+items (Requested/Searching/Downloading/Importing/Declined) stay uncapped
+(this set is naturally small — a handful of active requests at most) and
+sort by stage urgency, then oldest-request-first as a tiebreaker so a stuck
+item surfaces. **Library** items (Available/Partially Available) are capped
+to a small `RECENT_LIMIT` (default 5) and sorted by recency — Radarr's
+`movieFile.dateAdded` for movies, the max `dateAdded` across a series'
+episode files for shows (fetched per-series via Sonarr's `/episodefile?
+seriesId=`, since that endpoint has no unfiltered "all files" mode) —
+newest first, instead of alphabetically. This keeps the card's size stable
+regardless of library size, and the same 5 "most recent" titles rotate out
+predictably as new ones arrive, rather than an alphabetical cutoff quietly
+hiding different things over time.
+
+**Departure from decision #10, explicitly:** Ofelia's short-lived
+`job-run` container model was chosen specifically to avoid a long-running
+custom image in this repo. That model can't hold an HTTP endpoint open for
+Homepage to poll — a job-run container exits after each run. This service
+is therefore the first `build:`-based, continuously-running container in
+`docker-compose.yml`, not an oversight of #10 but a case that genuinely
+doesn't fit its "fire-and-forget job" shape.
+
+**Conventions followed (matching the rest of the repo):** Python 3 +
+`requests`, the only language/HTTP-client combo used anywhere else
+(`scripts/bootstrap.py`); Flask added as the one new dependency, justified
+because hand-rolling concurrent JSON HTTP on the stdlib is more code and
+failure surface than one well-established micro-framework for a single
+`/status` route. API keys follow the same path as `JELLYFIN_API_KEY`
+(decision #7/#13): generated keys a compose `environment:` block needs at
+container-creation time go in `.env`, written automatically by
+`bootstrap.py`, never hardcoded into the committed compose file.
+
+**Known limitations, accepted for this pass:**
+- Radarr/Sonarr's own queue `timeleft` can lag behind qBittorrent's real
+  progress (observed directly during earlier troubleshooting this
+  session). V1 trusts the *arr apps' own reporting rather than adding
+  qBittorrent as a 4th polled source; joining in qBittorrent by the queue
+  entry's `downloadId` for ground-truth percentage is a natural V2 if this
+  proves annoying in practice.
+- No auth on the `/status` endpoint — acceptable since every other
+  inter-service call in this stack is equally trusted-network-only
+  (`neoflix-net`, no reverse proxy anywhere), flagged here rather than
+  silently decided.
+
+---
+
+### 15. Host disk space in Server Info (`scripts/diskstats/`) — REMOVED
+
+**Original decision:** a second small standalone service,
+`scripts/diskstats/`, deliberately **separate from `lifecycle`**
+(decision #14) even though both are small Python HTTP services on the same
+pattern — they're unrelated concerns (host filesystem vs. request
+tracking) and mixing them was explicitly rejected in favor of one job
+each. Served one route, `/disk`, reading `shutil.disk_usage()` on the
+bind-mounted data volume, consumed by a `customapi` widget on a dedicated
+Server Info card. Kept deliberately minimal: stdlib-only (`http.server`,
+no Flask), `python:3.12-alpine` base, no `requirements.txt` at all — this
+part of the reasoning still holds if something like it gets rebuilt later.
+
+**Why removed:** the whole Server Info section was cut shortly after,
+in favor of investigating Homepage's native `glances` widget as a more
+complete replacement (real host CPU/memory/disk/network in one place,
+rather than one custom endpoint per stat). Container, image, compose
+entry, and `scripts/diskstats/` were all deleted rather than left running
+unused.
 
 ---
 
 ## Roadmap
 
-All 13 decisions made. Original POC scope (1-8) validated and running;
+15 decisions made. Original POC scope (1-8) validated and running;
 dashboard, scheduled automation, uptime monitoring, an alternative web
-client (9-12), and automated post-setup (13) added on top since. Next:
-bring the stack up and work through USER_STORIES.md.
+client (9-12, #12 later removed as redundant), automated post-setup (13),
+request-lifecycle tracking (14), and host disk stats (15) added on top
+since. Next: bring the stack up and work through USER_STORIES.md.
