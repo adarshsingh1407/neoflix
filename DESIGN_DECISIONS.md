@@ -49,11 +49,21 @@ moving a finished download into the library, avoiding doubled disk usage.
 confirmation that Docker Desktop's Mac virtualization layer (virtiofs)
 preserves hardlink behavior identically to native Linux — plausible that
 Sonarr/Radarr silently fall back to copying if it hits a cross-device-link
-error inside the VM. Impact at POC scale (1 movie + 1 episode) is
-negligible — worst case, a few hundred MB copied instead of hardlinked.
-Verify empirically once the POC runs (compare inode numbers or watch disk
-usage after an import) rather than architecting around a maybe-problem now;
-matters more once running a real library at scale.
+error inside the VM. Decided to verify empirically once real imports were
+happening (compare inode numbers or watch disk usage) rather than
+architecting around a maybe-problem up front.
+
+**Confirmed working:** `ls -li` on an imported file shows the same inode
+number and a link count of 2 between its `downloads/` and `media/` copies
+— virtiofs does preserve hardlinks correctly here. One real, practical
+consequence worth knowing: deleting a title from Radarr/Sonarr only
+removes the `media/` copy, so its `downloads/` copy (and qBittorrent
+torrent) keeps the disk space allocated until removed separately — this
+tripped up more than one disk-space investigation before the pattern was
+recognized. Also: Finder's Get Info and other naive size tools sum every
+filename's apparent size without deduplicating hardlinks, so they report
+roughly double the real usage for anything still linked both places —
+`du` gives the real number.
 
 **Media types beyond movies/TV:** folders for `music/`, `books/`, `audiobooks/`,
 `comics/` are reserved now (costs nothing) but **no corresponding apps are
@@ -224,12 +234,11 @@ credentials yet (decision #3 deferred that).
 `DATA_ROOT` (→ `~/neoflix-data`) — via a **`.env`** file at the project root,
 referenced in compose as `${PUID}` etc.
 
-**Git handling, now that the repo's future is known** (local during POC,
-pushed to a **private** GitHub repo once validated):
+**Git handling** (now pushed to a GitHub repo):
 - `.env` — gitignored. Not protecting a real secret today, but keeps
   machine-specific paths out of the committed file, and gives the eventual
   Mullvad/VPN credentials (decision #3's deferred item) an already-safe home
-  when they're added — no rework needed when the repo goes to GitHub.
+  whenever they're added.
 - **`.env.example`** — committed, placeholder values, documents the expected
   variables.
 - `~/neoflix-data/` (media, downloads, all app config/databases) already
@@ -248,9 +257,17 @@ LLD-lives-in-code call made earlier). A few choices worth flagging that
 aren't self-evident from reading the YAML:
 
 - **Image tags: `:latest`**, not pinned versions. Deliberate tradeoff — loses
-  reproducibility, gains zero-maintenance for a POC that isn't running
-  unattended long-term. Revisit if/when this moves to permanent hardware
-  (decision worth re-litigating then, not now).
+  reproducibility, gains zero-maintenance for a personal setup that isn't
+  running unattended long-term. Revisit if/when this moves to permanent
+  hardware (decision worth re-litigating then, not now).
+
+  **Update:** the tradeoff assumes `:latest` reliably means "current" —
+  checked all ten images directly and found one exception: Uptime Kuma's
+  own `:latest` tag on Docker Hub hadn't been rebuilt in ~9 months (its own
+  registry metadata confirmed it, still resolving to `v1.23.17` against a
+  then-current `v2.5.0`), a known, maintainer-acknowledged issue upstream.
+  Pinned to `2.5.0` explicitly rather than trusting `:latest` for that one
+  image; the other nine were all confirmed current at the time of checking.
 - **Radarr/Sonarr/qBittorrent mount the entire `${DATA_ROOT}` as `/data`**
   (not just `downloads/` + `media/`), so `config/` is technically visible
   under `/data/config/` inside those containers too. Harmless (apps don't
@@ -313,6 +330,36 @@ compose up -d` alone gets you for this one.
 
 **Deferred:** templating `services.yaml` from `.env`-driven values so a
 fresh clone gets a working dashboard automatically.
+
+**Follow-up, open (2026-09-09) — Jellyfin widget broken by server 12.0 upgrade:**
+upgraded Jellyfin (`lscr.io/linuxserver/jellyfin:latest`) to 12.0, which removed
+the legacy `/emby/` API prefix outright. Homepage's built-in `type: jellyfin`
+widget (image built 2026-08-14, predates 12.0) still calls `/emby/Items/Counts`
+and `/emby/Sessions`, so the dashboard's Jellyfin card started showing a red
+"API Error Information" banner. No fix available in `ghcr.io/gethomepage/homepage`
+as of this note (checked their releases — latest is `v2.2.0`, 2026-09-02, nothing
+since addresses 12.0). Confirmed the modern `/Sessions` and `/Items/Counts`
+endpoints (no `/emby/` prefix) both work fine on 12.0.
+
+**Temporary workaround in place:** swapped the Jellyfin service's `widget:`
+block in `services.yaml` (outside git, per above) to a `type: customapi` widget
+hitting `/Items/Counts` directly with the modern `Authorization: MediaBrowser
+Token="..."` header, showing Movies/Series/Episodes counts. Loses the original
+widget's live session/now-playing info (`enableUser`/`showEpisodeNumber`) —
+`customapi` only queries one endpoint per widget, and counts were the simpler
+single-endpoint replacement.
+
+**Revert trigger:** once `ghcr.io/gethomepage/homepage` ships a release whose
+Jellyfin widget supports 12.0, swap `services.yaml`'s Jellyfin `widget:` block
+back to the original (kept as a comment alongside the workaround in that file):
+```yaml
+widget:
+  type: jellyfin
+  url: http://jellyfin:8096
+  key: <JELLYFIN_API_KEY>
+  enableUser: true
+  showEpisodeNumber: true
+```
 
 ---
 
@@ -381,24 +428,10 @@ connection.
 
 ### 12. Alternative Jellyfin client (Jellyfin Vue) — REMOVED
 
-**Original decision:** `ghcr.io/jellyfin/jellyfin-vue:unstable`, published
-on host port `8090` (`8080` was already taken by qBittorrent's WebUI).
-
-**Original rationale:** optional modern alternative to the stock Jellyfin
-web client, low cost to try — it's a pure client with no separate
-data/backend of its own, just one compose block to remove if not kept.
-
-**Caveat that held true:** upstream has no stable release, only
-unstable/master-branch builds — a genuinely different maintenance posture
-than every other `:latest`-tagged service in this stack, where `:latest`
-still means "last tagged release."
-
-**Why removed:** never used past the initial try, and it added nothing
-Jellyfin's own built-in web client didn't already cover — same content,
-same server, just a second screen to maintain. Container, image, compose
-block, Homepage card, and Uptime Kuma monitor all removed together;
-Uptime Kuma's freed-up coverage was redirected to monitoring Homepage
-itself instead (see decision #11's update).
+Tried as an optional second Jellyfin web client; removed after never being
+used past the initial try — added nothing over the stock client for the
+extra maintenance surface. Not part of the stack. Uptime Kuma's freed-up
+monitor slot now watches Homepage instead (decision #11).
 
 ---
 
@@ -621,23 +654,11 @@ container-creation time go in `.env`, written automatically by
 
 ### 15. Host disk space in Server Info (`scripts/diskstats/`) — REMOVED
 
-**Original decision:** a second small standalone service,
-`scripts/diskstats/`, deliberately **separate from `lifecycle`**
-(decision #14) even though both are small Python HTTP services on the same
-pattern — they're unrelated concerns (host filesystem vs. request
-tracking) and mixing them was explicitly rejected in favor of one job
-each. Served one route, `/disk`, reading `shutil.disk_usage()` on the
-bind-mounted data volume, consumed by a `customapi` widget on a dedicated
-Server Info card. Kept deliberately minimal: stdlib-only (`http.server`,
-no Flask), `python:3.12-alpine` base, no `requirements.txt` at all — this
-part of the reasoning still holds if something like it gets rebuilt later.
-
-**Why removed:** the whole Server Info section was cut shortly after,
-in favor of investigating Homepage's native `glances` widget as a more
-complete replacement (real host CPU/memory/disk/network in one place,
-rather than one custom endpoint per stat). Container, image, compose
-entry, and `scripts/diskstats/` were all deleted rather than left running
-unused.
+Tried as a small custom service exposing host disk usage to a dedicated
+Homepage widget; removed shortly after in favor of investigating
+Homepage's native `glances` widget instead (real host CPU/memory/disk/
+network in one place, rather than one custom endpoint per stat). Not part
+of the stack.
 
 ---
 
