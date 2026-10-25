@@ -41,6 +41,16 @@ there are rare.
   neoflix-fix-seek stargate seeking hangs on the tizen app
   neoflix-fix-seek can't skip forward in hard boiled, it just freezes
   ```
+- **`neoflix-fix-audio`** — volume troubleshooting for one title. Measures
+  loudness against the library norm and, if it's too quiet (or the user
+  asks), adds a *parallel* dialogue-forward, loudness-normalised audio
+  track in the same file — the original track is never replaced. **Manual
+  only** — only when the user reports a specific title sounds too quiet or
+  asks for a dialogue-boosted track.
+  ```
+  neoflix-fix-audio millennium mambo sounds too quiet
+  neoflix-fix-audio add a dialogue boost track to a moment of romance
+  ```
 
 ## Quick reference
 
@@ -109,3 +119,9 @@ paths are `${DATA_ROOT}/media/...` and `${DATA_ROOT}/downloads/...` (see
    Signature: the reported runtime is noticeably longer than the title's
    actual known runtime, even though it plays fine start-to-finish. See
    `neoflix-fix-seek`.
+9. **A title that sounds too quiet is usually a quiet master, not a
+   5.1 problem.** Measure integrated loudness (EBU R128) before blaming
+   the channel layout: the library norm is about -25 LUFS, and one 5.1
+   title measured -35.7 LUFS with perfectly healthy channels. Fix it by
+   *adding* a normalised second audio track, never by replacing the
+   original. See `neoflix-fix-audio`.

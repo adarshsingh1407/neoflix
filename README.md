@@ -29,7 +29,7 @@ side of the flow.
 
 ## Asking Claude directly
 
-If you're working with Claude Code in this repo, three skills under
+If you're working with Claude Code in this repo, four skills under
 `.claude/skills/` cover the common cases instead of going through
 Jellyseerr/qBittorrent by hand:
 
@@ -62,6 +62,18 @@ when a specific title's seeking is actually broken.
 ```
 neoflix-fix-seek stargate seeking hangs on the tizen app
 neoflix-fix-seek can't skip forward in hard boiled, it just freezes
+```
+
+**`neoflix-fix-audio`** — volume troubleshooting for one title. Measures
+how loud its audio is against the rest of the library and, if it's too
+quiet (or you ask for it), adds a second, dialogue-forward,
+loudness-normalised audio track to the same file that you can pick in
+Jellyfin. The original track is never replaced. Manual only — call it
+when a specific title sounds too quiet.
+
+```
+neoflix-fix-audio millennium mambo sounds too quiet
+neoflix-fix-audio add a dialogue boost track to a moment of romance
 ```
 
 See [CLAUDE.md](CLAUDE.md) for the size caps and other house rules these
@@ -132,6 +144,11 @@ Lidarr/Readarr/comics), is in DESIGN_DECISIONS.md.
 Media, downloads, and app config all live outside this repo, at
 `~/neoflix-data/` — see decision #1 in DESIGN_DECISIONS.md for the full
 structure and why it's kept separate from the git-tracked project folder.
+
+This repo is public, so secrets stay out of it: API keys and logins live
+in `.env` and `credentials.env` (both gitignored — only the `.example`
+files are tracked) and in each app's own config under `~/neoflix-data/`.
+Never paste a key into a doc, a commit message, or a skill file.
 
 ## Running it
 
