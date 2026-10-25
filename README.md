@@ -27,7 +27,7 @@ side of the flow.
 
 ## Asking Claude directly
 
-If you're working with Claude Code in this repo, two skills under
+If you're working with Claude Code in this repo, three skills under
 `.claude/skills/` cover the common cases instead of going through
 Jellyseerr/qBittorrent by hand:
 
@@ -51,6 +51,15 @@ out of sync, mistranslated), not as a routine check.
 ```
 neoflix-fix-subs the subs for hard boiled are out of sync
 neoflix-fix-subs police story subtitles don't match the video
+```
+
+**`neoflix-fix-seek`** — seek troubleshooting for one title (hangs,
+freezes, jumps to the wrong spot when scrubbing). Manual only — call it
+when a specific title's seeking is actually broken.
+
+```
+neoflix-fix-seek stargate seeking hangs on the tizen app
+neoflix-fix-seek can't skip forward in hard boiled, it just freezes
 ```
 
 See [CLAUDE.md](CLAUDE.md) for the size caps and other house rules these

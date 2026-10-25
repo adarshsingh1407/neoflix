@@ -641,6 +641,38 @@ unused.
 
 ---
 
+## Known Issues
+
+### Tizen seek hangs from trailing silent-audio padding
+
+**Symptom:** Jellyfin's Tizen app hung/froze on seek for one title
+(Stargate EXTENDED (1994)) while every other title in the library seeked
+fine, and playback itself (no seeking involved) was unaffected.
+
+**Root cause:** the file's audio track had roughly five hours of pure
+digital silence (~-91dB, the noise floor) appended after the real movie
+audio ended — real content ran ~2h9m, but the audio track (and so the
+container's overall reported duration) ran to ~7h13m. Jellyfin reports
+the *longer* of the video/audio stream durations as the item's runtime,
+so `RunTimeTicks` — and every client's seek-bar math built on it,
+Tizen's included — was working off a duration roughly 3.3x too long.
+Seeking anywhere past the real ~28% mark landed in a region with no
+video data to find. The file's audio handler was tagged `GPAC ISO Audio
+Handler`, suggesting the padding originated from whatever GPAC/MP4Box-
+based tool packaged the release, though that's a correlation observed
+once, not confirmed as the general cause.
+
+**Fix:** a stream-copy `ffmpeg` remux explicitly capped at the video
+stream's real duration (`-c copy -movflags +faststart -t <duration>`)
+trims the padding losslessly. Notably, a plain `-c copy` remux with no
+`-t` cutoff, and separately `-shortest`, both failed to trim it — the
+padding is genuine per-frame audio data, not a stale header field.
+Detailed step-by-step now lives in the `neoflix-fix-seek` skill, since
+this is exactly the kind of thing worth checking first if it happens
+again on another title.
+
+---
+
 ## Roadmap
 
 15 decisions made. Original POC scope (1-8) validated and running;
