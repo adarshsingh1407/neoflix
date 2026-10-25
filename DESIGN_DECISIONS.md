@@ -117,6 +117,12 @@ if/when needed: add a `gluetun` service, set qBittorrent's
 `network_mode: "service:gluetun"`, move its port publishing onto gluetun, add
 a health-check `depends_on` so qBittorrent never runs unprotected.
 
+**Update (running setup):** this deferred item was never picked back up.
+The stack now acquires real titles, and it still runs with **no VPN** —
+qBittorrent connects directly from the host's own IP. That is the current,
+accepted state rather than a re-made decision; the retrofit path above is
+still the way to add protection if that changes.
+
 **Verified during design review (2026-07-19):** Pioneer One's original VODO
 swarm is 15 years old — likely low/dead seeders on the generic public
 trackers Prowlarr indexes by default (decision #4), which probably never
@@ -187,7 +193,7 @@ working for both the app and browser paths.
 
 ---
 
-### 6. Component scope for POC — DECIDED (revised)
+### 6. Component scope — DECIDED (revised)
 
 **Decision:** Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent, **Jellyseerr**.
 
@@ -234,18 +240,20 @@ credentials yet (decision #3 deferred that).
 `DATA_ROOT` (→ `~/neoflix-data`) — via a **`.env`** file at the project root,
 referenced in compose as `${PUID}` etc.
 
-**Git handling** (now pushed to a GitHub repo):
-- `.env` — gitignored. Not protecting a real secret today, but keeps
-  machine-specific paths out of the committed file, and gives the eventual
-  Mullvad/VPN credentials (decision #3's deferred item) an already-safe home
-  whenever they're added.
+**Git handling** (pushed to a **public** GitHub repo):
+- `.env` and `credentials.env` — gitignored. They now hold real values:
+  the API keys and logins that `scripts/bootstrap.py` generates, plus
+  machine-specific paths. They must never be committed, and a VPN
+  credential (decision #3's deferred item) would live in the same place.
 - **`.env.example`** — committed, placeholder values, documents the expected
   variables.
 - `~/neoflix-data/` (media, downloads, all app config/databases) already
   lives entirely outside the `neoflix/` project folder (decision #1) — so it
-  was never going to be swept up in a `git add` regardless of public/private.
-- Private repo lowers the stakes vs. public, but doesn't change any of the
-  above — same hygiene either way.
+  was never going to be swept up in a `git add`.
+- Because the repo is public, nothing secret may appear in any committed
+  file, doc or commit message — use placeholders such as
+  `<JELLYFIN_API_KEY>`. Check pending changes for real key values before
+  committing.
 
 ---
 
@@ -401,7 +409,8 @@ mismatch.
 
 ### 11. Uptime monitoring (Uptime Kuma) — DECIDED
 
-**Decision:** `louislam/uptime-kuma:latest`. Monitors all 8 web-facing
+**Decision:** `louislam/uptime-kuma:2.5.0` (pinned; its `:latest` tag went
+stale — see the update under decision #8). Monitors all 8 web-facing
 services over HTTP on the internal bridge network (`jellyfin`, `radarr`,
 `sonarr`, `bazarr`, `prowlarr`, `qbittorrent`, `jellyseerr`, `homepage`),
 backed by a public status page (slug `default`) that Homepage's widget

@@ -85,9 +85,11 @@ skills apply.
 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) for the full log. The original
 one-movie/one-episode validation pass (see
 [USER_STORIES.md](USER_STORIES.md)) is long since passed; the stack now
-runs real day-to-day acquisition and playback. Remaining open item:
+runs real day-to-day acquisition and playback. Remaining open items:
 cross-platform setup hasn't been verified on real Windows hardware (see
-the TODO at the bottom of this file).
+the TODO at the bottom of this file), and Homepage's built-in Jellyfin
+widget is on a temporary workaround since the Jellyfin 12 upgrade (see
+the follow-up under decision #9 in DESIGN_DECISIONS.md).
 
 ## Docs
 
