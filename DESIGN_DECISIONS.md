@@ -49,11 +49,21 @@ moving a finished download into the library, avoiding doubled disk usage.
 confirmation that Docker Desktop's Mac virtualization layer (virtiofs)
 preserves hardlink behavior identically to native Linux — plausible that
 Sonarr/Radarr silently fall back to copying if it hits a cross-device-link
-error inside the VM. Impact at POC scale (1 movie + 1 episode) is
-negligible — worst case, a few hundred MB copied instead of hardlinked.
-Verify empirically once the POC runs (compare inode numbers or watch disk
-usage after an import) rather than architecting around a maybe-problem now;
-matters more once running a real library at scale.
+error inside the VM. Decided to verify empirically once real imports were
+happening (compare inode numbers or watch disk usage) rather than
+architecting around a maybe-problem up front.
+
+**Confirmed working:** `ls -li` on an imported file shows the same inode
+number and a link count of 2 between its `downloads/` and `media/` copies
+— virtiofs does preserve hardlinks correctly here. One real, practical
+consequence worth knowing: deleting a title from Radarr/Sonarr only
+removes the `media/` copy, so its `downloads/` copy (and qBittorrent
+torrent) keeps the disk space allocated until removed separately — this
+tripped up more than one disk-space investigation before the pattern was
+recognized. Also: Finder's Get Info and other naive size tools sum every
+filename's apparent size without deduplicating hardlinks, so they report
+roughly double the real usage for anything still linked both places —
+`du` gives the real number.
 
 **Media types beyond movies/TV:** folders for `music/`, `books/`, `audiobooks/`,
 `comics/` are reserved now (costs nothing) but **no corresponding apps are
@@ -106,6 +116,12 @@ before grabbing a real movie/show you actually want to watch. Retrofit path
 if/when needed: add a `gluetun` service, set qBittorrent's
 `network_mode: "service:gluetun"`, move its port publishing onto gluetun, add
 a health-check `depends_on` so qBittorrent never runs unprotected.
+
+**Update (running setup):** this deferred item was never picked back up.
+The stack now acquires real titles, and it still runs with **no VPN** —
+qBittorrent connects directly from the host's own IP. That is the current,
+accepted state rather than a re-made decision; the retrofit path above is
+still the way to add protection if that changes.
 
 **Verified during design review (2026-07-19):** Pioneer One's original VODO
 swarm is 15 years old — likely low/dead seeders on the generic public
@@ -177,7 +193,7 @@ working for both the app and browser paths.
 
 ---
 
-### 6. Component scope for POC — DECIDED (revised)
+### 6. Component scope — DECIDED (revised)
 
 **Decision:** Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent, **Jellyseerr**.
 
@@ -224,19 +240,20 @@ credentials yet (decision #3 deferred that).
 `DATA_ROOT` (→ `~/neoflix-data`) — via a **`.env`** file at the project root,
 referenced in compose as `${PUID}` etc.
 
-**Git handling, now that the repo's future is known** (local during POC,
-pushed to a **private** GitHub repo once validated):
-- `.env` — gitignored. Not protecting a real secret today, but keeps
-  machine-specific paths out of the committed file, and gives the eventual
-  Mullvad/VPN credentials (decision #3's deferred item) an already-safe home
-  when they're added — no rework needed when the repo goes to GitHub.
+**Git handling** (pushed to a **public** GitHub repo):
+- `.env` and `credentials.env` — gitignored. They now hold real values:
+  the API keys and logins that `scripts/bootstrap.py` generates, plus
+  machine-specific paths. They must never be committed, and a VPN
+  credential (decision #3's deferred item) would live in the same place.
 - **`.env.example`** — committed, placeholder values, documents the expected
   variables.
 - `~/neoflix-data/` (media, downloads, all app config/databases) already
   lives entirely outside the `neoflix/` project folder (decision #1) — so it
-  was never going to be swept up in a `git add` regardless of public/private.
-- Private repo lowers the stakes vs. public, but doesn't change any of the
-  above — same hygiene either way.
+  was never going to be swept up in a `git add`.
+- Because the repo is public, nothing secret may appear in any committed
+  file, doc or commit message — use placeholders such as
+  `<JELLYFIN_API_KEY>`. Check pending changes for real key values before
+  committing.
 
 ---
 
@@ -248,9 +265,17 @@ LLD-lives-in-code call made earlier). A few choices worth flagging that
 aren't self-evident from reading the YAML:
 
 - **Image tags: `:latest`**, not pinned versions. Deliberate tradeoff — loses
-  reproducibility, gains zero-maintenance for a POC that isn't running
-  unattended long-term. Revisit if/when this moves to permanent hardware
-  (decision worth re-litigating then, not now).
+  reproducibility, gains zero-maintenance for a personal setup that isn't
+  running unattended long-term. Revisit if/when this moves to permanent
+  hardware (decision worth re-litigating then, not now).
+
+  **Update:** the tradeoff assumes `:latest` reliably means "current" —
+  checked all ten images directly and found one exception: Uptime Kuma's
+  own `:latest` tag on Docker Hub hadn't been rebuilt in ~9 months (its own
+  registry metadata confirmed it, still resolving to `v1.23.17` against a
+  then-current `v2.5.0`), a known, maintainer-acknowledged issue upstream.
+  Pinned to `2.5.0` explicitly rather than trusting `:latest` for that one
+  image; the other nine were all confirmed current at the time of checking.
 - **Radarr/Sonarr/qBittorrent mount the entire `${DATA_ROOT}` as `/data`**
   (not just `downloads/` + `media/`), so `config/` is technically visible
   under `/data/config/` inside those containers too. Harmless (apps don't
@@ -314,6 +339,36 @@ compose up -d` alone gets you for this one.
 **Deferred:** templating `services.yaml` from `.env`-driven values so a
 fresh clone gets a working dashboard automatically.
 
+**Follow-up, open (2026-09-09) — Jellyfin widget broken by server 12.0 upgrade:**
+upgraded Jellyfin (`lscr.io/linuxserver/jellyfin:latest`) to 12.0, which removed
+the legacy `/emby/` API prefix outright. Homepage's built-in `type: jellyfin`
+widget (image built 2026-08-14, predates 12.0) still calls `/emby/Items/Counts`
+and `/emby/Sessions`, so the dashboard's Jellyfin card started showing a red
+"API Error Information" banner. No fix available in `ghcr.io/gethomepage/homepage`
+as of this note (checked their releases — latest is `v2.2.0`, 2026-09-02, nothing
+since addresses 12.0). Confirmed the modern `/Sessions` and `/Items/Counts`
+endpoints (no `/emby/` prefix) both work fine on 12.0.
+
+**Temporary workaround in place:** swapped the Jellyfin service's `widget:`
+block in `services.yaml` (outside git, per above) to a `type: customapi` widget
+hitting `/Items/Counts` directly with the modern `Authorization: MediaBrowser
+Token="..."` header, showing Movies/Series/Episodes counts. Loses the original
+widget's live session/now-playing info (`enableUser`/`showEpisodeNumber`) —
+`customapi` only queries one endpoint per widget, and counts were the simpler
+single-endpoint replacement.
+
+**Revert trigger:** once `ghcr.io/gethomepage/homepage` ships a release whose
+Jellyfin widget supports 12.0, swap `services.yaml`'s Jellyfin `widget:` block
+back to the original (kept as a comment alongside the workaround in that file):
+```yaml
+widget:
+  type: jellyfin
+  url: http://jellyfin:8096
+  key: <JELLYFIN_API_KEY>
+  enableUser: true
+  showEpisodeNumber: true
+```
+
 ---
 
 ### 10. Scheduled automation (Ofelia) — DECIDED
@@ -354,7 +409,8 @@ mismatch.
 
 ### 11. Uptime monitoring (Uptime Kuma) — DECIDED
 
-**Decision:** `louislam/uptime-kuma:latest`. Monitors all 8 web-facing
+**Decision:** `louislam/uptime-kuma:2.5.0` (pinned; its `:latest` tag went
+stale — see the update under decision #8). Monitors all 8 web-facing
 services over HTTP on the internal bridge network (`jellyfin`, `radarr`,
 `sonarr`, `bazarr`, `prowlarr`, `qbittorrent`, `jellyseerr`, `homepage`),
 backed by a public status page (slug `default`) that Homepage's widget
@@ -381,24 +437,10 @@ connection.
 
 ### 12. Alternative Jellyfin client (Jellyfin Vue) — REMOVED
 
-**Original decision:** `ghcr.io/jellyfin/jellyfin-vue:unstable`, published
-on host port `8090` (`8080` was already taken by qBittorrent's WebUI).
-
-**Original rationale:** optional modern alternative to the stock Jellyfin
-web client, low cost to try — it's a pure client with no separate
-data/backend of its own, just one compose block to remove if not kept.
-
-**Caveat that held true:** upstream has no stable release, only
-unstable/master-branch builds — a genuinely different maintenance posture
-than every other `:latest`-tagged service in this stack, where `:latest`
-still means "last tagged release."
-
-**Why removed:** never used past the initial try, and it added nothing
-Jellyfin's own built-in web client didn't already cover — same content,
-same server, just a second screen to maintain. Container, image, compose
-block, Homepage card, and Uptime Kuma monitor all removed together;
-Uptime Kuma's freed-up coverage was redirected to monitoring Homepage
-itself instead (see decision #11's update).
+Tried as an optional second Jellyfin web client; removed after never being
+used past the initial try — added nothing over the stock client for the
+extra maintenance surface. Not part of the stack. Uptime Kuma's freed-up
+monitor slot now watches Homepage instead (decision #11).
 
 ---
 
@@ -621,30 +663,50 @@ container-creation time go in `.env`, written automatically by
 
 ### 15. Host disk space in Server Info (`scripts/diskstats/`) — REMOVED
 
-**Original decision:** a second small standalone service,
-`scripts/diskstats/`, deliberately **separate from `lifecycle`**
-(decision #14) even though both are small Python HTTP services on the same
-pattern — they're unrelated concerns (host filesystem vs. request
-tracking) and mixing them was explicitly rejected in favor of one job
-each. Served one route, `/disk`, reading `shutil.disk_usage()` on the
-bind-mounted data volume, consumed by a `customapi` widget on a dedicated
-Server Info card. Kept deliberately minimal: stdlib-only (`http.server`,
-no Flask), `python:3.12-alpine` base, no `requirements.txt` at all — this
-part of the reasoning still holds if something like it gets rebuilt later.
+Tried as a small custom service exposing host disk usage to a dedicated
+Homepage widget; removed shortly after in favor of investigating
+Homepage's native `glances` widget instead (real host CPU/memory/disk/
+network in one place, rather than one custom endpoint per stat). Not part
+of the stack.
 
-**Why removed:** the whole Server Info section was cut shortly after,
-in favor of investigating Homepage's native `glances` widget as a more
-complete replacement (real host CPU/memory/disk/network in one place,
-rather than one custom endpoint per stat). Container, image, compose
-entry, and `scripts/diskstats/` were all deleted rather than left running
-unused.
+---
+
+## Known Issues
+
+### Tizen seek hangs from trailing silent-audio padding
+
+**Symptom:** Jellyfin's Tizen app hung/froze on seek for one title
+(Stargate EXTENDED (1994)) while every other title in the library seeked
+fine, and playback itself (no seeking involved) was unaffected.
+
+**Root cause:** the file's audio track had roughly five hours of pure
+digital silence (~-91dB, the noise floor) appended after the real movie
+audio ended — real content ran ~2h9m, but the audio track (and so the
+container's overall reported duration) ran to ~7h13m. Jellyfin reports
+the *longer* of the video/audio stream durations as the item's runtime,
+so `RunTimeTicks` — and every client's seek-bar math built on it,
+Tizen's included — was working off a duration roughly 3.3x too long.
+Seeking anywhere past the real ~28% mark landed in a region with no
+video data to find. The file's audio handler was tagged `GPAC ISO Audio
+Handler`, suggesting the padding originated from whatever GPAC/MP4Box-
+based tool packaged the release, though that's a correlation observed
+once, not confirmed as the general cause.
+
+**Fix:** a stream-copy `ffmpeg` remux explicitly capped at the video
+stream's real duration (`-c copy -movflags +faststart -t <duration>`)
+trims the padding losslessly. Notably, a plain `-c copy` remux with no
+`-t` cutoff, and separately `-shortest`, both failed to trim it — the
+padding is genuine per-frame audio data, not a stale header field.
+Detailed step-by-step now lives in the `neoflix-fix-seek` skill, since
+this is exactly the kind of thing worth checking first if it happens
+again on another title.
 
 ---
 
 ## Roadmap
 
-15 decisions made. Original POC scope (1-8) validated and running;
-dashboard, scheduled automation, uptime monitoring, an alternative web
-client (9-12, #12 later removed as redundant), automated post-setup (13),
-request-lifecycle tracking (14), and host disk stats (15) added on top
-since. Next: bring the stack up and work through USER_STORIES.md.
+15 decisions made. Original scope (1-8) validated and in regular use;
+dashboard, scheduled automation, uptime monitoring (9-11), automated
+post-setup (13), and request-lifecycle tracking (14) added on top and
+still active. Two additions were tried and later reverted (#12, #15) —
+see those entries for the one-line reason each.

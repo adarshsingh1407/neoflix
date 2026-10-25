@@ -33,6 +33,24 @@ there are rare.
   neoflix-fix-subs the subs for hard boiled are out of sync
   neoflix-fix-subs police story subtitles don't match the video
   ```
+- **`neoflix-fix-seek`** — seek troubleshooting for one title (hangs,
+  freezes, jumps to the wrong spot when scrubbing). **Manual only** —
+  only when the user reports an actual seeking problem on a specific
+  title.
+  ```
+  neoflix-fix-seek stargate seeking hangs on the tizen app
+  neoflix-fix-seek can't skip forward in hard boiled, it just freezes
+  ```
+- **`neoflix-fix-audio`** — volume troubleshooting for one title. Measures
+  loudness against the library norm and, if it's too quiet (or the user
+  asks), adds a *parallel* dialogue-forward, loudness-normalised audio
+  track in the same file — the original track is never replaced. **Manual
+  only** — only when the user reports a specific title sounds too quiet or
+  asks for a dialogue-boosted track.
+  ```
+  neoflix-fix-audio millennium mambo sounds too quiet
+  neoflix-fix-audio add a dialogue boost track to a moment of romance
+  ```
 
 ## Quick reference
 
@@ -93,3 +111,17 @@ paths are `${DATA_ROOT}/media/...` and `${DATA_ROOT}/downloads/...` (see
    `GET /Sessions` (look at `TranscodingInfo.TranscodeReasons`) before
    assuming a general system problem. `SubtitleCodecNotSupported` on an
    otherwise direct-playable file is the most common cause seen so far.
+8. **A title can hang/freeze/jump wrong on seek (Tizen especially) if its
+   audio track has trailing silence appended past the video's real
+   length.** Jellyfin reports the longer of the two streams as the
+   file's duration, so a padded audio track inflates the whole title's
+   reported runtime and every client's seek-bar math goes with it.
+   Signature: the reported runtime is noticeably longer than the title's
+   actual known runtime, even though it plays fine start-to-finish. See
+   `neoflix-fix-seek`.
+9. **A title that sounds too quiet is usually a quiet master, not a
+   5.1 problem.** Measure integrated loudness (EBU R128) before blaming
+   the channel layout: the library norm is about -25 LUFS, and one 5.1
+   title measured -35.7 LUFS with perfectly healthy channels. Fix it by
+   *adding* a normalised second audio track, never by replacing the
+   original. See `neoflix-fix-audio`.

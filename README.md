@@ -1,8 +1,10 @@
 # neoflix
 
 Self-hosted media server: automated movie/show acquisition + Jellyfin
-streaming, running in Docker. Currently a POC on an M1 Mac, validated against
-one movie and one show episode before any real usage.
+streaming, running in Docker. Started as a POC on an M1 Mac validated
+against one movie and one show episode; now in regular day-to-day use —
+dozens of movies/episodes acquired and played back over LAN on iPhone and
+a Samsung Smart TV.
 
 ## How you'll actually use it
 
@@ -27,7 +29,7 @@ side of the flow.
 
 ## Asking Claude directly
 
-If you're working with Claude Code in this repo, two skills under
+If you're working with Claude Code in this repo, four skills under
 `.claude/skills/` cover the common cases instead of going through
 Jellyseerr/qBittorrent by hand:
 
@@ -53,15 +55,41 @@ neoflix-fix-subs the subs for hard boiled are out of sync
 neoflix-fix-subs police story subtitles don't match the video
 ```
 
+**`neoflix-fix-seek`** — seek troubleshooting for one title (hangs,
+freezes, jumps to the wrong spot when scrubbing). Manual only — call it
+when a specific title's seeking is actually broken.
+
+```
+neoflix-fix-seek stargate seeking hangs on the tizen app
+neoflix-fix-seek can't skip forward in hard boiled, it just freezes
+```
+
+**`neoflix-fix-audio`** — volume troubleshooting for one title. Measures
+how loud its audio is against the rest of the library and, if it's too
+quiet (or you ask for it), adds a second, dialogue-forward,
+loudness-normalised audio track to the same file that you can pick in
+Jellyfin. The original track is never replaced. Manual only — call it
+when a specific title sounds too quiet.
+
+```
+neoflix-fix-audio millennium mambo sounds too quiet
+neoflix-fix-audio add a dialogue boost track to a moment of romance
+```
+
 See [CLAUDE.md](CLAUDE.md) for the size caps and other house rules these
 skills apply.
 
 ## Status
 
-**Design complete, POC not yet validated.** All 13 architecture decisions are
-made and `docker-compose.yml` exists — see [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
-for the full log. Next step is bringing the stack up and working through
-[USER_STORIES.md](USER_STORIES.md).
+**In active use.** All 15 architecture decisions are made — see
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) for the full log. The original
+one-movie/one-episode validation pass (see
+[USER_STORIES.md](USER_STORIES.md)) is long since passed; the stack now
+runs real day-to-day acquisition and playback. Remaining open items:
+cross-platform setup hasn't been verified on real Windows hardware (see
+the TODO at the bottom of this file), and Homepage's built-in Jellyfin
+widget is on a temporary workaround since the Jellyfin 12 upgrade (see
+the follow-up under decision #9 in DESIGN_DECISIONS.md).
 
 ## Docs
 
@@ -77,13 +105,13 @@ For the deeper context, read in this order:
    of truth for "why is it built this way."
 3. [HLD.md](HLD.md) — architecture and request-flow diagrams (mermaid);
    the visual shape of the system.
-4. [USER_STORIES.md](USER_STORIES.md) — manual test plan for validating the
-   POC once it's running, tagged by who performs each step (Claude vs. you).
+4. [USER_STORIES.md](USER_STORIES.md) — the original manual test plan used
+   to validate the pipeline, tagged by who performs each step (Claude vs. you).
 
 ## Stack
 
-One Docker bridge network, no VPN for the POC. Core acquisition/playback
-pipeline (decisions 1-8):
+One Docker bridge network, no VPN. Core acquisition/playback pipeline
+(decisions 1-8):
 
 - **Jellyfin** — media server / playback
 - **Radarr** — movie acquisition automation
@@ -118,6 +146,11 @@ Lidarr/Readarr/comics), is in DESIGN_DECISIONS.md.
 Media, downloads, and app config all live outside this repo, at
 `~/neoflix-data/` — see decision #1 in DESIGN_DECISIONS.md for the full
 structure and why it's kept separate from the git-tracked project folder.
+
+This repo is public, so secrets stay out of it: API keys and logins live
+in `.env` and `credentials.env` (both gitignored — only the `.example`
+files are tracked) and in each app's own config under `~/neoflix-data/`.
+Never paste a key into a doc, a commit message, or a skill file.
 
 ## Running it
 

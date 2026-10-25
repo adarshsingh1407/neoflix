@@ -696,7 +696,7 @@ def setup_jellyfin():
         warn(f"Jellyfin: could not authenticate as {ADMIN_USERNAME} to finish setup ({auth.status_code})")
         return None
     token = auth.json()["AccessToken"]
-    auth_headers = {**headers, "X-Emby-Token": token}
+    auth_headers = {**headers, "Authorization": f'MediaBrowser Token="{token}"'}
 
     if not already_done:
         folders = requests.get("http://localhost:8096/Library/VirtualFolders", headers=auth_headers).json()

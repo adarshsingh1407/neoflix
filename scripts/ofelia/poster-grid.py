@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 JELLYFIN_URL = os.environ["JELLYFIN_URL"]
 API_KEY = os.environ["JELLYFIN_API_KEY"]
-HEADERS = {"X-Emby-Token": API_KEY}
+HEADERS = {"Authorization": f'MediaBrowser Token="{API_KEY}"'}
 
 CANVAS_W, CANVAS_H = 1920, 1080
 MAX_TILES = 6
@@ -45,10 +45,17 @@ def get_poster_item_ids(library_id, count):
         "SortBy": "DateCreated",
         "SortOrder": "Descending",
         "Limit": count,
+        "Fields": "ImageTags",
     }
     r = requests.get(f"{JELLYFIN_URL}/Items", headers=HEADERS, params=params)
     r.raise_for_status()
-    return [item["Id"] for item in r.json()["Items"]]
+    # Recently-added items can land without a Primary image before their metadata
+    # refresh completes (see house rule #5) -- skip them rather than 404ing on
+    # fetch_poster; the grid already shrinks to whatever count it's given.
+    return [
+        item["Id"] for item in r.json()["Items"]
+        if "Primary" in item.get("ImageTags", {})
+    ]
 
 
 def fetch_poster(item_id):
