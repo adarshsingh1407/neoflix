@@ -73,9 +73,18 @@ Do this on the host, against the host path (`${DATA_ROOT}/media/...`,
 see `CLAUDE.md`'s quick reference for the container↔host path mapping).
 
 ```
-ffmpeg -i "<host-path>" -c copy -movflags +faststart \
-  -t <video_stream_duration_plus_~0.1s> "<host-path>.fixed.mp4"
+ffmpeg -i "<host-path>" -map 0 -c copy -movflags +faststart \
+  -t <video_stream_duration_plus_~0.1s> "<fixed-path>"
 ```
+
+`<fixed-path>` is the original name with `.fixed` before the **same
+extension** (`Movie.mkv` → `Movie.fixed.mkv`), so the container never
+changes. Drop `-movflags +faststart` for non-MP4 containers.
+
+**Keep `-map 0`.** Without an explicit `-map`, ffmpeg keeps only one
+video and one audio stream, silently dropping extra audio tracks (for
+example a boosted track from `neoflix-fix-audio`) and embedded
+subtitles. Step 5 checks for exactly that.
 
 Two things that look like they'd work but don't, confirmed the hard way:
 
@@ -92,11 +101,17 @@ Two things that look like they'd work but don't, confirmed the hard way:
 ## Step 5: verify before touching the live file
 
 ```
-ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 "<host-path>.fixed.mp4"
+ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 "<fixed-path>"
+for f in "<host-path>" "<fixed-path>"; do
+  ffprobe -v error -show_entries stream=index,codec_type,codec_name:stream_tags=language,title -of compact "$f"
+done
 ```
 
-Should now be close to the video stream's duration from Step 2, not the
-original inflated number. Don't proceed to Step 6 until this checks out.
+Duration should now be close to the video stream's duration from Step 2,
+not the original inflated number. **The two stream lists must match**
+(same number of audio and subtitle streams, same codecs and titles) — a
+shorter list means a track was dropped. Don't proceed to Step 6 until
+both checks pass.
 
 ## Step 6: swap it in — never overwrite in place or delete the original
 
@@ -106,7 +121,7 @@ corrupt or remove the other copy too. Rename, don't delete:
 
 ```
 mv "<host-path>" "<host-path>.bak-before-fix"
-mv "<host-path>.fixed.mp4" "<host-path>"
+mv "<fixed-path>" "<host-path>"
 chmod 644 "<host-path>"
 ```
 
