@@ -64,7 +64,7 @@ Notes:
 - `qBittorrent`, `Radarr`, and `Sonarr` all mount the **same** `neoflix-data`
   parent (not separate volumes) — this is the hardlink requirement from
   decision #1, shown here as one shared volume rather than three.
-- No VPN/gluetun node — decision #3 explicitly excludes it for the POC.
+- No VPN/gluetun node — decision #3 explicitly excludes it.
 - Public trackers are reached directly from Prowlarr (search) and
   qBittorrent (swarm download) with no tunnel in between.
 - Homepage, Ofelia, and Uptime Kuma (decisions 9-11) are left off this

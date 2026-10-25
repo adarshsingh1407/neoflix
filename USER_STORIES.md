@@ -1,4 +1,4 @@
-# neoflix — POC Manual Test Stories
+# neoflix — Manual Test Stories
 
 How to manually validate the running stack once it's up: M1 Mac (Docker
 Desktop, running the core acquisition/playback containers) + iPhone
@@ -6,7 +6,7 @@ Desktop, running the core acquisition/playback containers) + iPhone
 self-contained pass/fail check. Run them in order — later stories assume
 earlier ones passed.
 
-Scoped to the original POC pipeline (decisions 1-8: Jellyfin, Radarr,
+Scoped to the original core pipeline (decisions 1-8: Jellyfin, Radarr,
 Sonarr, Prowlarr, qBittorrent, Jellyseerr, Bazarr). The optional add-ons
 from decisions 9-11 (Homepage, Ofelia, Uptime Kuma) aren't covered by
 these stories — Uptime Kuma's own status page is effectively its live
@@ -127,8 +127,9 @@ Steps:
    moved anything.
 5. (Optional, ties to the hardlink verification noted in decision #1) —
    compare `ls -i` inode numbers between the file in `downloads/` and
-   `media/` to see whether it was hardlinked or copied. Either is a pass for
-   this POC; just worth knowing.
+   `media/` to see whether it was hardlinked or copied. Either is a pass;
+   just worth knowing. (Confirmed hardlinked in practice — see decision #1's
+   update.)
 
 **Pass:** both files appear under `media/` automatically. No manual `mv`/`cp`
 performed by you (aside from the Pioneer One fallback path, if triggered).
@@ -203,7 +204,7 @@ this story just validates the request UX end-to-end from the client device).
 
 ---
 
-## Overall POC success
+## Overall success
 
 Matches [GOALS.md](GOALS.md)'s three success criteria, now concretely:
 stories 1–4 prove "search → grabbed automatically," story 5 proves

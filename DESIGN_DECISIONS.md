@@ -675,8 +675,8 @@ again on another title.
 
 ## Roadmap
 
-15 decisions made. Original POC scope (1-8) validated and running;
-dashboard, scheduled automation, uptime monitoring, an alternative web
-client (9-12, #12 later removed as redundant), automated post-setup (13),
-request-lifecycle tracking (14), and host disk stats (15) added on top
-since. Next: bring the stack up and work through USER_STORIES.md.
+15 decisions made. Original scope (1-8) validated and in regular use;
+dashboard, scheduled automation, uptime monitoring (9-11), automated
+post-setup (13), and request-lifecycle tracking (14) added on top and
+still active. Two additions were tried and later reverted (#12, #15) —
+see those entries for the one-line reason each.

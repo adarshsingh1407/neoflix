@@ -1,8 +1,10 @@
 # neoflix
 
 Self-hosted media server: automated movie/show acquisition + Jellyfin
-streaming, running in Docker. Currently a POC on an M1 Mac, validated against
-one movie and one show episode before any real usage.
+streaming, running in Docker. Started as a POC on an M1 Mac validated
+against one movie and one show episode; now in regular day-to-day use —
+dozens of movies/episodes acquired and played back over LAN on iPhone and
+a Samsung Smart TV.
 
 ## How you'll actually use it
 
@@ -67,10 +69,13 @@ skills apply.
 
 ## Status
 
-**Design complete, POC not yet validated.** All 13 architecture decisions are
-made and `docker-compose.yml` exists — see [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
-for the full log. Next step is bringing the stack up and working through
-[USER_STORIES.md](USER_STORIES.md).
+**In active use.** All 15 architecture decisions are made — see
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) for the full log. The original
+one-movie/one-episode validation pass (see
+[USER_STORIES.md](USER_STORIES.md)) is long since passed; the stack now
+runs real day-to-day acquisition and playback. Remaining open item:
+cross-platform setup hasn't been verified on real Windows hardware (see
+the TODO at the bottom of this file).
 
 ## Docs
 
@@ -86,13 +91,13 @@ For the deeper context, read in this order:
    of truth for "why is it built this way."
 3. [HLD.md](HLD.md) — architecture and request-flow diagrams (mermaid);
    the visual shape of the system.
-4. [USER_STORIES.md](USER_STORIES.md) — manual test plan for validating the
-   POC once it's running, tagged by who performs each step (Claude vs. you).
+4. [USER_STORIES.md](USER_STORIES.md) — the original manual test plan used
+   to validate the pipeline, tagged by who performs each step (Claude vs. you).
 
 ## Stack
 
-One Docker bridge network, no VPN for the POC. Core acquisition/playback
-pipeline (decisions 1-8):
+One Docker bridge network, no VPN. Core acquisition/playback pipeline
+(decisions 1-8):
 
 - **Jellyfin** — media server / playback
 - **Radarr** — movie acquisition automation
