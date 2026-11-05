@@ -26,6 +26,7 @@ TRACK_LIMIT = int(os.environ.get("TRACK_LIMIT", "20"))
 RECENT_LIMIT = int(os.environ.get("RECENT_LIMIT", "5"))
 WIDGET_LIMIT = int(os.environ.get("WIDGET_LIMIT", "12"))
 REQUEST_TIMEOUT = 10
+HOST_INFO_PATH = os.environ.get("HOST_INFO_PATH", "/host/host.json")
 
 LIBRARY_STAGES = {"Available", "Partially Available"}
 
@@ -282,6 +283,18 @@ def status():
     with _cache_lock:
         items = list(_cache["items"])
     return jsonify({"items": items})
+
+
+@app.route("/host")
+def host():
+    """The Mac's LAN IP, for Homepage's Network card. Containers can't see
+    it (Docker Desktop NAT), so scripts/host/lan-ip.sh writes it on the host
+    into a folder mounted here; this route only passes the file through."""
+    try:
+        with open(HOST_INFO_PATH) as f:
+            return app.response_class(f.read(), mimetype="application/json")
+    except OSError:
+        return jsonify({"lan_ip": "unknown (is lan-ip.sh installed?)"})
 
 
 if __name__ == "__main__":

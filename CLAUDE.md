@@ -65,7 +65,7 @@ there are rare.
 | Bazarr | 6767 | subtitles |
 | Homepage | 3000 | dashboard |
 | Uptime Kuma | 3001 | monitoring |
-| Lifecycle | 8100 | custom service — merges Jellyseerr/Radarr/Sonarr into one per-request status for Homepage's widget |
+| Lifecycle | 8100 | custom service — `/status` merges Jellyseerr/Radarr/Sonarr into one per-request status (not currently on the dashboard); `/host` serves the Mac's LAN IP written by `scripts/host/lan-ip.sh` (launchd agent `com.neoflix.lan-ip`) |
 
 API keys: Radarr/Sonarr/Jellyfin/Jellyseerr keys are in `.env`. Bazarr's
 **own** key (for calling its API directly) is under `auth:` in

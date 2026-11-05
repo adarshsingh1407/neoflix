@@ -142,6 +142,11 @@ services:
       - JELLYSEERR_API_KEY=${JELLYSEERR_API_KEY}
       - RADARR_API_KEY=${RADARR_API_KEY}
       - SONARR_API_KEY=${SONARR_API_KEY}
+    volumes:
+      # Written on the host by scripts/host/lan-ip.sh (served at /host).
+      # A folder, not a single-file mount, so the script's atomic rename
+      # shows up inside the container.
+      - ${DATA_ROOT}/config/host:/host:ro
     ports:
       - "8100:8100"
     depends_on:

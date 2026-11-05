@@ -143,7 +143,8 @@ flowchart TB
     homepage -- reads status via each app's API key --> bazarr
     homepage -- reads status via each app's API key --> qbit
     homepage -- reads public status page --> kuma
-    homepage -- reads merged request status --> lifecycle
+    homepage -- reads LAN IP via /host --> lifecycle
+    lanip["lan-ip.sh<br>(host launchd agent)"] -- writes host.json<br>(mounted folder) --> lifecycle
     lifecycle -- polls every 30s --> jellyseerr
     lifecycle -- polls every 30s --> radarr
     lifecycle -- polls every 30s --> sonarr
@@ -180,4 +181,10 @@ Notes:
 - The lifecycle service (decision #14) is the one exception to "Homepage
   reads each app directly with its own API key" — Homepage only talks to
   `lifecycle`, which does its own polling of Jellyseerr/Radarr/Sonarr and
-  hands back an already-correlated, per-request status list.
+  hands back an already-correlated, per-request status list. (That list,
+  `/status`, is currently not shown on the dashboard; see decision #14's
+  2026-11-06 follow-up.)
+- `lan-ip.sh` is the only piece of the stack that runs on the host rather
+  than in a container: Docker Desktop hides the Mac's LAN IP from
+  containers, so a launchd agent writes it to a file that lifecycle serves
+  at `/host` (decision #9, personalizations).

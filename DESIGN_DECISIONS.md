@@ -369,6 +369,48 @@ widget:
   showEpisodeNumber: true
 ```
 
+**Personalizations on this install (2026-11-06, outside git):** because
+`services.yaml` isn't version-controlled (above), this is the record of
+what the live dashboard has that `bootstrap.py`'s starter doesn't.
+`bootstrap.py` never overwrites an existing `services.yaml`, so these
+survive re-runs; a fresh install has to redo them by hand.
+
+- **Jellyseerr card simplified:** removed the `customapi` dynamic-list
+  widget that read `http://lifecycle:8100/status` (the per-title
+  "Requested / Available now" list from #14). The card now shows only the
+  built-in `type: seerr` request counts. The `custom.css` grid that makes
+  Jellyseerr span the right half of the Media section was sized for that
+  list and was left as-is. To restore the list, re-add:
+  ```yaml
+  - type: customapi
+    url: http://lifecycle:8100/status
+    display: dynamic-list
+    mappings:
+      items: items
+      name: name
+      label: label
+  ```
+- **Network card added** (Monitoring section), with two `customapi`
+  widgets:
+  - **Public IP:** `https://api.ipify.org/?format=json`, every 5 min. This
+    is the stack's only call to a third-party service purely for display.
+    (Note: `api64.ipify.org` returned 404 from inside the container; the
+    trailing slash on `api.ipify.org/` matters too.)
+  - **LAN IP:** `http://lifecycle:8100/host`, every 60s. Containers can't
+    see the Mac's LAN address (Docker Desktop NAT, see `CLAUDE.md` house
+    rule 6), so `scripts/host/lan-ip.sh` writes it on the host into
+    `${DATA_ROOT}/config/host/host.json`. A launchd agent
+    (`com.neoflix.lan-ip`, installed with `scripts/host/lan-ip.sh install`)
+    re-runs it on every network change and every 5 min. The LAN IP has
+    changed more than once on this Mac, so a value saved once at setup
+    would go stale exactly when it's needed. Lifecycle passes the file
+    through because Homepage only serves `public/images` files that existed
+    when it started (that's also why Ofelia restarts Homepage after a
+    background change, #10). The folder is mounted, not the single file,
+    so the script's write-then-rename shows up inside the container.
+    macOS only; Linux/Windows hosts get `"unknown"` until there's an
+    equivalent.
+
 ---
 
 ### 10. Scheduled automation (Ofelia) — DECIDED
@@ -662,6 +704,15 @@ container-creation time go in `.env`, written automatically by
   inter-service call in this stack is equally trusted-network-only
   (`neoflix-net`, no reverse proxy anywhere), flagged here rather than
   silently decided.
+
+**Follow-up, open (2026-11-06) — `/status` no longer on the dashboard:**
+the Jellyseerr card's lifecycle list was removed by choice (see #9's
+personalizations), so nothing displays `/status` right now. The service
+still polls every 30s, which keeps the list one widget-paste away if it
+comes back. It also gained a second, unrelated route, `GET /host`, that
+passes through the host-written LAN IP file for the Network card (#9).
+If `/status` stays unused, the polling could be dropped and lifecycle
+slimmed down to just `/host`.
 
 ---
 

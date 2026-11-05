@@ -398,8 +398,23 @@ configured entirely by hand-editing YAML files under
 `bootstrap.py` writes a minimal starting version of these; weather
 location, background rotation, and other cosmetic touches are still yours
 to add by hand. See [gethomepage.dev](https://gethomepage.dev) for the
-config schema. After editing, `docker restart homepage` to pick up
-changes — Homepage doesn't hot-reload its config.
+config schema. Edits to the YAML files show up on the next page refresh,
+with no restart needed. New files dropped into `images/` are the exception:
+Homepage only serves files that existed when it started, so
+`docker restart homepage` after adding one.
+
+**Optional: show the Mac's local network address on the dashboard (macOS
+only).** Containers can't see it themselves, so a small background job on
+the Mac publishes it:
+
+```bash
+scripts/host/lan-ip.sh install
+```
+
+Then add a `customapi` widget pointing at `http://lifecycle:8100/host`
+(field `lan_ip`) to `services.yaml`. `scripts/host/lan-ip.sh uninstall`
+removes the background job. The *why* is in
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) decision #9.
 
 ## Curious why any of this is built this way?
 
