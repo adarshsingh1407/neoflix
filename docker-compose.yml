@@ -192,7 +192,7 @@ services:
       ofelia.job-run.poster-grid.volume: '["${NEOFLIX_REPO_ROOT}/scripts/ofelia:/scripts:ro"]'
 
   uptime-kuma:
-    image: louislam/uptime-kuma:2.5.0
+    image: louislam/uptime-kuma:2.5.9
     container_name: uptime-kuma
     restart: unless-stopped
     networks:

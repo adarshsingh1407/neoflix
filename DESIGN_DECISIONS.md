@@ -409,8 +409,12 @@ mismatch.
 
 ### 11. Uptime monitoring (Uptime Kuma) — DECIDED
 
-**Decision:** `louislam/uptime-kuma:2.5.0` (pinned; its `:latest` tag went
-stale — see the update under decision #8). Monitors all 8 web-facing
+**Decision:** `louislam/uptime-kuma:2.5.9` (pinned; its `:latest` tag went
+stale — see the update under decision #8). The pin means it never updates
+on its own, so it has to be raised by hand: bumped from `2.5.0` on
+2026-11-06 for security fixes (an admin-authenticated RCE via Apprise
+argument injection, an unauthenticated ping-badge DoS, and RSS cache
+poisoning). Monitors all 8 web-facing
 services over HTTP on the internal bridge network (`jellyfin`, `radarr`,
 `sonarr`, `bazarr`, `prowlarr`, `qbittorrent`, `jellyseerr`, `homepage`),
 backed by a public status page (slug `default`) that Homepage's widget
