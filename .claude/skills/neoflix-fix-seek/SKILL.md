@@ -25,17 +25,19 @@ titles seek fine, check two things before going further:
 
 ## Step 2: compare video vs audio stream duration
 
-Use Jellyfin's own bundled ffmpeg inside the container — it reads the
-file directly from the mount, no need to go through the HTTP API:
+Use the host's ffprobe against the host path (`${DATA_ROOT}/media/...`).
+All ffmpeg/ffprobe work in this skill runs on the Mac, not via
+`docker exec jellyfin`, so it never competes with playback inside the
+Docker VM (DESIGN_DECISIONS.md decision #16):
 
 ```
-docker exec jellyfin /usr/lib/jellyfin-ffmpeg/ffprobe -v error \
+ffprobe -v error \
   -select_streams v:0 -show_entries stream=duration \
-  -of default=noprint_wrappers=1 "<container-path-to-video>"
+  -of default=noprint_wrappers=1 "<host-path-to-video>"
 
-docker exec jellyfin /usr/lib/jellyfin-ffmpeg/ffprobe -v error \
+ffprobe -v error \
   -select_streams a:0 -show_entries stream=duration \
-  -of default=noprint_wrappers=1 "<container-path-to-video>"
+  -of default=noprint_wrappers=1 "<host-path-to-video>"
 ```
 
 If the audio duration is much larger than the video duration, that
@@ -53,12 +55,12 @@ Don't assume — a stream-copy remux will NOT fix a merely-wrong duration
 audio data. Check which one this is:
 
 ```
-docker exec jellyfin /usr/lib/jellyfin-ffmpeg/ffmpeg -ss <a-few-seconds-before-video-end> \
-  -t 10 -i "<container-path>" -map 0:a:0 -af volumedetect -f null - 2>&1 \
+ffmpeg -ss <a-few-seconds-before-video-end> \
+  -t 10 -i "<host-path>" -map 0:a:0 -af volumedetect -f null - 2>&1 \
   | grep -E "mean_volume|max_volume"
 
-docker exec jellyfin /usr/lib/jellyfin-ffmpeg/ffmpeg -ss <a-few-seconds-after-video-end> \
-  -t 10 -i "<container-path>" -map 0:a:0 -af volumedetect -f null - 2>&1 \
+ffmpeg -ss <a-few-seconds-after-video-end> \
+  -t 10 -i "<host-path>" -map 0:a:0 -af volumedetect -f null - 2>&1 \
   | grep -E "mean_volume|max_volume"
 ```
 

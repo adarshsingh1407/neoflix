@@ -1,6 +1,6 @@
 ---
 name: neoflix-fix-subs
-description: Manual-only subtitle troubleshooting for the neoflix library — junk/ad-placeholder detection, extracting embedded ASS/PGS to plain SRT to avoid transcode-on-playback, sync verification against actual video duration, and finding/downloading a better subtitle via Bazarr. Do NOT run this proactively after every add — only invoke when the user reports an actual subtitle problem (missing, not showing, out of sync, wrong text) on a specific title.
+description: Manual-only subtitle troubleshooting for the neoflix library — junk/ad-placeholder detection, extracting embedded ASS to plain SRT (or fetching a text subtitle for PGS-only titles) to avoid transcode-on-playback, sync verification against actual video duration, and finding/downloading a better subtitle via Bazarr. Do NOT run this proactively after every add — only invoke when the user reports an actual subtitle problem (missing, not showing, out of sync, wrong text) on a specific title.
 ---
 
 # neoflix-fix-subs: on-demand subtitle troubleshooting
@@ -36,20 +36,24 @@ Ask yourself (check the file, don't guess):
 
 ## Step 2: embedded ASS/PGS → extract to plain SRT
 
+Run ffmpeg/ffprobe on the host against the host path
+(`${DATA_ROOT}/media/...`), not via `docker exec jellyfin`, so the work
+never competes with playback inside the Docker VM (DESIGN_DECISIONS.md
+decision #16).
+
 Find the stream:
 ```
-docker exec jellyfin /usr/lib/jellyfin-ffmpeg/ffprobe -v quiet -print_format json \
-  -show_streams "<container-path-to-video>"
+ffprobe -v quiet -print_format json -show_streams "<host-path-to-video>"
 ```
 Look for `codec_type: subtitle` entries; prefer the one whose
 `tags.title` reads like the main dialogue track (e.g. "Full Subtitles"
 over "Signs" or "Blu-ray Subtitles"/PGS).
 
-Extract and clean:
+Extract and clean (ASS only — **PGS is images**, so ffmpeg can't turn it
+into text; for a PGS-only title go to Step 4 and fetch a text subtitle
+instead):
 ```
-docker exec jellyfin /usr/lib/jellyfin-ffmpeg/ffmpeg -y -i "<container-path>" \
-  -map 0:<index> /tmp/out.srt
-docker cp jellyfin:/tmp/out.srt /tmp/out.srt
+ffmpeg -y -i "<host-path>" -map 0:<index> <scratch>/out.srt
 ```
 Strip leftover ASS styling that survives SRT conversion — `<font>`,
 `<b>`, `<i>`, `<u>` tags, and stray `{\anX}`-style override codes — with

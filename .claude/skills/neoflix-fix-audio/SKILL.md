@@ -17,16 +17,19 @@ and stays selectable.
 ## Step 1: measure — don't guess, and don't blame 5.1
 
 "Sounds quiet" on a 5.1 file is usually a quiet *master*, not the channel
-layout. Measure first, using Jellyfin's bundled ffmpeg (the container
-mount is read-only, so this is analysis only):
+layout. Measure first, with the **host's** ffmpeg against the host path
+(`${DATA_ROOT}/media/...`). All ffmpeg work in this skill runs on the Mac,
+never via `docker exec jellyfin`: decoding a whole film's audio is real CPU
+work, and inside Docker it competes with playback for the VM's 4 CPUs and
+Jellyfin's memory cap (DESIGN_DECISIONS.md decision #16).
 
 ```
-FF=/usr/lib/jellyfin-ffmpeg/ffmpeg
-FP=/usr/lib/jellyfin-ffmpeg/ffprobe
-docker exec jellyfin $FP -v error \
+FF=/opt/homebrew/bin/ffmpeg
+FP=/opt/homebrew/bin/ffprobe
+$FP -v error \
   -show_entries stream=index,codec_type,codec_name,channels,channel_layout:stream_tags=language,title \
-  -of compact "<container-path>"
-docker exec jellyfin $FF -hide_banner -nostats -i "<container-path>" -vn -map 0:a:0 \
+  -of compact "<host-path>"
+$FF -hide_banner -nostats -i "<host-path>" -vn -map 0:a:0 \
   -af ebur128=peak=true -f null - 2>&1 | sed -n '/Summary:/,$p'
 ```
 
@@ -87,22 +90,24 @@ explicit `aresample` matters.
 
 ## Step 3: encode the new track
 
-Encode inside the Jellyfin container (write to its `/tmp`), copy out to a
-scratch folder on the host. Pass 1 only measures; **it must use exactly the
-same `<chain>` as pass 2**:
+Encode on the host, writing straight to a scratch folder (outside the repo
+and outside `media/`/`downloads/`). Pass 1 only measures; **it must use
+exactly the same `<chain>` as pass 2**:
 
 ```
 # pass 1: measure (read input_i, input_tp, input_lra, input_thresh, target_offset)
-docker exec jellyfin $FF -hide_banner -nostats -i "<container-path>" -vn -map 0:a:0 \
+$FF -hide_banner -nostats -i "<host-path>" -vn -map 0:a:0 \
   -af "<chain>,loudnorm=I=-24:TP=-1.5:LRA=12:print_format=json" -f null - 2>&1 \
   | sed -n '/^{/,/^}/p'
 
 # pass 2: encode using those numbers
-docker exec jellyfin $FF -y -i "<container-path>" -vn -map 0:a:0 \
+$FF -y -i "<host-path>" -vn -map 0:a:0 \
   -af "<chain>,loudnorm=I=-24:TP=-1.5:LRA=12:measured_I=<input_i>:measured_TP=<input_tp>:measured_LRA=<input_lra>:measured_thresh=<input_thresh>:offset=<target_offset>:print_format=summary,aresample=48000" \
-  -c:a aac -b:a 192k -ac 2 /tmp/boost.m4a
-docker cp jellyfin:/tmp/boost.m4a <scratch>/boost.m4a
+  -c:a aac -b:a 192k -ac 2 <scratch>/boost.m4a
 ```
+
+Use the native `aac` encoder: Homebrew's ffmpeg has no `libfdk_aac`
+(Jellyfin's bundled build does, which is why its own logs show it).
 
 (Change `I=-24` per the target notes above.)
 
