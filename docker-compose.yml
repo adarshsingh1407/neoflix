@@ -3,7 +3,7 @@
 # running `docker compose up -d`.
 #
 # mem_limit values are ceilings (~2x measured idle usage), not reservations —
-# see decision #16 for the numbers and the Docker Desktop VM sizing they assume.
+# see decision #16 for the numbers and #18 for the OrbStack VM settings.
 #
 # Services under the "extras" profile (Jellyseerr, Lifecycle, Homepage, Ofelia,
 # Uptime Kuma) are off by default to fit the 2.5 GB VM. Start them on demand:

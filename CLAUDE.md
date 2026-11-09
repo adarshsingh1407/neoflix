@@ -54,6 +54,11 @@ there are rare.
 
 ## Quick reference
 
+Docker runs on **OrbStack** (context `orbstack`; `orb config show`, `orb
+stop`/`orb start`), not Docker Desktop — decision #18. Docker Desktop is
+still installed but quit, kept only for rollback; never run the stack on
+both at once.
+
 The everyday dashboard is the host page on :3000 (outside Docker).
 Jellyseerr, Homepage, Uptime Kuma, Lifecycle (and Ofelia) are in the
 `extras` compose profile and **not running by default** (decision #16) —
@@ -105,7 +110,8 @@ paths are `${DATA_ROOT}/media/...` and `${DATA_ROOT}/downloads/...` (see
    and no overview** even after a library-level refresh. A forced
    per-item refresh (`ReplaceAllMetadata=true&ReplaceAllImages=true`)
    fixes it; a library-wide refresh alone often doesn't.
-6. **Docker Desktop networking is NAT'd, not host** — UPnP/NAT-PMP
+6. **Container networking is NAT'd, not host** (OrbStack, like Docker
+   Desktop before it, runs containers in a VM) — UPnP/NAT-PMP
    requested from inside a container does not reach the real home
    router. Anything relying on auto-discovery (e.g. a client finding
    Jellyfin on the LAN by broadcast) is unreliable here; manual

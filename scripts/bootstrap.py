@@ -44,7 +44,8 @@ CREDENTIALS_PATH = REPO_ROOT / "credentials.env"
 def _check_docker():
     if shutil.which("docker") is None:
         sys.exit(
-            "Docker not found on PATH. Install Docker Desktop "
+            "Docker not found on PATH. Install OrbStack on macOS "
+            "(https://orbstack.dev) or Docker Desktop "
             "(https://www.docker.com/products/docker-desktop/), make sure "
             "it's running, and try again."
         )
@@ -52,7 +53,7 @@ def _check_docker():
     if r.returncode != 0:
         sys.exit(
             "Docker is installed but doesn't seem to be running -- start "
-            "Docker Desktop (or the Docker daemon) and try again."
+            "OrbStack / Docker Desktop (or the Docker daemon) and try again."
         )
 
 

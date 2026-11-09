@@ -33,8 +33,12 @@ you set up once and then mostly leave alone.
 
 ## 1. Prerequisites
 
-- Docker Desktop installed and running (you should see its icon/whale in
-  your system tray or menu bar — if it's not running, start it now)
+- A Docker engine installed and running. On the Mac this stack uses
+  **OrbStack** (free for personal use; `brew install --cask orbstack`), set
+  to `orb config set memory_mib 3072` and `orb config set cpu 4`, with
+  "Expose ports to LAN" left on so the TV/phone can reach Jellyfin
+  (DESIGN_DECISIONS.md decision #18). Docker Desktop also works (and is
+  what Windows/Linux use); see its menu-bar whale to confirm it's running.
 - Python 3 — macOS/Linux: check with `python3 --version` (macOS ships with
   this already). Windows: check with `python --version`, or install from
   [python.org](https://www.python.org/downloads/) if missing (tick "Add

@@ -3,7 +3,7 @@
 # Mac itself on port 3000, outside Docker.
 #
 # Why on the host: the page shows the Mac's LAN IP, which only a host
-# process can see (Docker Desktop NAT, CLAUDE.md house rule 6), and
+# process can see (container VM NAT, CLAUDE.md house rule 6), and
 # scripts/host/lan-ip.sh already runs here to write it. Serving a static page
 # with macOS's bundled Python (dashboard/serve.py: stdlib http.server with a
 # bigger connection backlog and cache headers) costs ~15 MB and no idle CPU, against ~170 MB

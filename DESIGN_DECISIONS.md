@@ -736,7 +736,8 @@ the rest was Linux page cache the VM never hands back to macOS. Load
 average was ~0.4.
 
 **Decision:**
-- **Docker Desktop VM: 2.5 GB memory, 4 CPUs, 1 GB swap** (first cut was
+- **Docker Desktop VM: 2.5 GB memory, 4 CPUs, 1 GB swap** (*superseded
+  2026-11-09 by decision #18: OrbStack, 3 GB cap, dynamic memory*; first cut was
   3 GB with all 11 services; lowered once the extras below were made
   opt-in). The core six use ~1.05 GB steady, leaving room for Jellyfin's
   observed ~0.9 GB peak during a transcode. Shrinking the containers alone
@@ -792,8 +793,7 @@ average was ~0.4.
 <name> --format '{{.State.OOMKilled}}'`) — raise that one limit; 4K or
 high-bitrate transcodes stutter — raise VM CPUs to 6; the Mac still
 swaps heavily — consider OrbStack, which returns unused VM memory to
-macOS dynamically (deferred: it replaces Docker Desktop, which the rest of
-these docs assume).
+macOS dynamically (done 2026-11-09: decision #18).
 
 ---
 
@@ -861,6 +861,49 @@ plus Ofelia/Lifecycle just to feed it).
 
 **Deferred:** deleting Homepage, Ofelia and Lifecycle from the compose
 file entirely; they stay available under `extras` for now.
+
+---
+
+### 18. Container runtime: OrbStack instead of Docker Desktop — DECIDED
+
+**Context:** after decision #16, Docker Desktop's VM still held its full
+2.5 GB allocation on the Mac (2.6 GB measured) while the core six used
+~1 GB, on an 8 GB Mac that was swapping. OrbStack allocates VM memory on
+demand and returns unused memory to macOS.
+
+**Migration (2026-11-09; plan in `ORBSTACK_MIGRATION_PLAN.md`):** clean
+re-pull rather than OrbStack's Docker Desktop import (no named volumes;
+all state is in `${DATA_ROOT}` bind mounts). The six core images were
+pulled **by digest** of what was running and re-tagged `:latest`, so
+nothing upgraded mid-move and rolling back can't hit a newer config
+schema. `config/` was backed up first
+(`~/neoflix-config-pre-orb-2026-11-09.tgz`).
+
+**Settings:** OrbStack 2.2.5, `memory_mib 3072` (a cap, not a
+reservation), `cpu 4` (same transcode cap as #16), Rosetta off (every
+image is arm64), Kubernetes off, "expose ports to LAN" on (default; LAN
+clients are a hard requirement), start at login off (same as Docker
+Desktop was). Per-container `mem_limit` values are unchanged: they're
+cgroup limits and still apply.
+
+**Verified after the move:** all core ports answer on localhost and the
+LAN IP; Jellyfin/qBittorrent listen on `*` (6881 had live peers within
+minutes); `neoflix-net` created with IPv6 on the first try; a hardlink
+made inside radarr shows the same inode and link count 2 on the host;
+bind-mount files stay owned by uid 501. Memory, same metric (`top` MEM):
+Docker Desktop VM 2,578 MB → OrbStack helper + app ~1.9 GB right after
+start (~0.7 GB back). Re-measure after a day: dynamic release is gradual.
+
+**Rollback:** `docker compose stop`, `orb stop`, start Docker Desktop,
+`docker context use desktop-linux`, `docker compose start` (the old
+containers were stopped, not removed). Docker Desktop stays installed
+until OrbStack has run for a few weeks.
+
+**Still open:** TV playback/seek check on the new runtime; hardlink check
+after the next real import; then purge Docker Desktop's disk image
+(~9.5 GB) and, before uninstalling it, point `~/.docker/config.json`'s
+`credsStore` at `osxkeychain` and clear its Docker Desktop plugin
+symlinks (the `docker` CLI is currently a symlink into Docker.app).
 
 ---
 

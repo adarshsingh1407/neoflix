@@ -14,7 +14,7 @@ flowchart TB
         trackers[("Public Trackers")]
     end
 
-    subgraph mac["M1 Mac - Docker Desktop"]
+    subgraph mac["M1 Mac - OrbStack"]
         subgraph net["Bridge network: neoflix-net"]
             prowlarr["Prowlarr<br>:9696"]
             radarr["Radarr<br>:7878"]
@@ -187,7 +187,7 @@ Notes:
   `/status`, is currently not shown on the dashboard; see decision #14's
   2026-11-06 follow-up.)
 - `lan-ip.sh` and the dashboard are the only pieces of the stack that run
-  on the host rather than in a container: Docker Desktop hides the Mac's
+  on the host rather than in a container: the container VM (OrbStack) hides the Mac's
   LAN IP from containers, so a launchd agent writes it (plus the public IP)
   to `host.json`, and a second agent serves that folder with a static
   dashboard page on :3000 (decisions #9 and #17).

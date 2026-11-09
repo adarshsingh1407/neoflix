@@ -288,7 +288,7 @@ def status():
 @app.route("/host")
 def host():
     """The Mac's LAN IP, for Homepage's Network card. Containers can't see
-    it (Docker Desktop NAT), so scripts/host/lan-ip.sh writes it on the host
+    it (container VM NAT), so scripts/host/lan-ip.sh writes it on the host
     into a folder mounted here; this route only passes the file through."""
     try:
         with open(HOST_INFO_PATH) as f:

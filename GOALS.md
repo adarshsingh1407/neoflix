@@ -14,7 +14,7 @@ Prowlarr + a download client) rather than inventing something new.
   via developer mode, running on a Samsung Smart TV on the same LAN.
 - **Automate acquisition**: search → grab → download → organize into the library,
   without manual file wrangling.
-- **Runs on an M1 Mac (Docker Desktop).** Started as a POC to validate the
+- **Runs on an M1 Mac (OrbStack; Docker Desktop until 2026-11-09).** Started as a POC to validate the
   workflow end-to-end before committing to anything more permanent — that
   validation is done, and this is now the actual running setup. Setup tooling
   (`scripts/bootstrap.py`) also supports Windows and Linux (see
@@ -33,7 +33,8 @@ Prowlarr + a download client) rather than inventing something new.
 
 ## Non-goals
 
-- Hardware-accelerated transcoding — M1 Docker Desktop can't pass through the
+- Hardware-accelerated transcoding — Docker on an M1 Mac (OrbStack or Docker
+  Desktop) can't pass through the
   video encoder, so software transcoding is accepted. Not a blocker; revisit
   only if it becomes a real bottleneck.
 - High availability, multi-user account management, or anything beyond
@@ -43,7 +44,7 @@ Prowlarr + a download client) rather than inventing something new.
 
 ## Constraints
 
-- **Machine**: MacBook (M1, Apple Silicon), Docker Desktop — the actual
+- **Machine**: MacBook (M1, Apple Silicon), OrbStack — the actual
   running instance, not a temporary stand-in. The bootstrap tooling is
   cross-platform (see above), but hasn't actually been run on Windows or
   Linux yet.

@@ -4,7 +4,7 @@
 # (scripts/host/dashboard.sh, served from that same folder) reads. The
 # optional lifecycle container also serves the file at /host.
 #
-# Why this runs on the host: Docker Desktop NATs containers (CLAUDE.md house
+# Why this runs on the host: the container VM NATs containers (CLAUDE.md house
 # rule 6), so nothing inside the stack can see the Mac's real LAN address.
 # A launchd agent re-runs it on every network change and every 5 minutes,
 # since the Mac's DHCP address has changed before. The public IP comes from

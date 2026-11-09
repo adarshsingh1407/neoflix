@@ -1,4 +1,4 @@
-# OrbStack migration plan (draft, not executed)
+# OrbStack migration plan (executed 2026-11-09; outcome in DESIGN_DECISIONS.md #18)
 
 Researched 2026-11-09 by a read-only planning pass; nothing was installed or
 changed. Facts cite their source; anything marked *unverified* is tested by a
