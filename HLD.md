@@ -127,7 +127,7 @@ flowchart TB
         bazarr["Bazarr<br>:6767"]
         qbit["qBittorrent<br>:8080"]
         prowlarr["Prowlarr<br>:9696"]
-        homepage["Homepage<br>:3000"]
+        homepage["Homepage<br>:3002 (optional)"]
         kuma["Uptime Kuma<br>:3001"]
         ofelia["Ofelia<br>(no port, label-driven)"]
         lifecycle["Lifecycle service<br>:8100"]
@@ -145,6 +145,7 @@ flowchart TB
     homepage -- reads public status page --> kuma
     homepage -- reads LAN IP via /host --> lifecycle
     lanip["lan-ip.sh<br>(host launchd agent)"] -- writes host.json<br>(mounted folder) --> lifecycle
+    lanip -- writes host.json --> dash["Host dashboard<br>:3000 (launchd, python http.server)"]
     lifecycle -- polls every 30s --> jellyseerr
     lifecycle -- polls every 30s --> radarr
     lifecycle -- polls every 30s --> sonarr
@@ -184,7 +185,8 @@ Notes:
   hands back an already-correlated, per-request status list. (That list,
   `/status`, is currently not shown on the dashboard; see decision #14's
   2026-11-06 follow-up.)
-- `lan-ip.sh` is the only piece of the stack that runs on the host rather
-  than in a container: Docker Desktop hides the Mac's LAN IP from
-  containers, so a launchd agent writes it to a file that lifecycle serves
-  at `/host` (decision #9, personalizations).
+- `lan-ip.sh` and the dashboard are the only pieces of the stack that run
+  on the host rather than in a container: Docker Desktop hides the Mac's
+  LAN IP from containers, so a launchd agent writes it (plus the public IP)
+  to `host.json`, and a second agent serves that folder with a static
+  dashboard page on :3000 (decisions #9 and #17).

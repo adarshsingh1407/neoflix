@@ -202,7 +202,8 @@ each one is actually for:
 | `http://localhost:8080` | **qBittorrent** | Shows active/finished downloads in progress. Worth a peek if something seems stuck. |
 | `http://localhost:6767` | **Bazarr** | Subtitle manager, if you're using it. |
 | `http://localhost:3001` | **Uptime Kuma** | Shows whether everything's actually up, if you're using it. |
-| `http://localhost:3000` | **Homepage** | One dashboard with links to everything above, if you're using it. |
+| `http://localhost:3000` | **Dashboard** | One page with links to everything above plus the Mac's local and public IP. Runs on the Mac itself, not in Docker (see below). |
+| `http://localhost:3002` | **Homepage** | The older, heavier dashboard; optional and off by default. |
 
 `localhost` only works on the same computer running Docker. To reach these
 from your phone or another device on the same WiFi, swap `localhost` for
@@ -403,18 +404,20 @@ with no restart needed. New files dropped into `images/` are the exception:
 Homepage only serves files that existed when it started, so
 `docker restart homepage` after adding one.
 
-**Optional: show the Mac's local network address on the dashboard (macOS
-only).** Containers can't see it themselves, so a small background job on
-the Mac publishes it:
+**The dashboard on port 3000 (macOS only).** A single static page served
+from the Mac itself rather than from Docker, because only the Mac can see
+its own local network address. Two small background jobs run it:
 
 ```bash
-scripts/host/lan-ip.sh install
+scripts/host/lan-ip.sh install     # writes the local + public IP every 5 min
+scripts/host/dashboard.sh install  # serves the page on port 3000
 ```
 
-Then add a `customapi` widget pointing at `http://lifecycle:8100/host`
-(field `lan_ip`) to `services.yaml`. `scripts/host/lan-ip.sh uninstall`
-removes the background job. The *why* is in
-[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) decision #9.
+The first time, macOS may ask whether `python3` may accept incoming
+connections: allow it, or the page won't open from your phone/TV. After
+editing `scripts/host/dashboard/index.html`, run
+`scripts/host/dashboard.sh update`. `uninstall` removes either job. The
+*why* is in [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) decisions #9 and #17.
 
 ## Curious why any of this is built this way?
 

@@ -1,0 +1,162 @@
+<!doctype html>
+<!--
+  neoflix host dashboard. Served from ${DATA_ROOT}/config/host by
+  scripts/host/dashboard.sh (copied there on install); reads host.json,
+  written next to it by scripts/host/lan-ip.sh.
+  No API keys here, by design: it is reachable by anything on the LAN.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>neoflix</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #ffffff; --text: #1b1b1a; --muted: #6b6b66;
+    --border: #e2e2dd; --up: #2e9e5b; --down: #c94a3f; --unknown: #b5b5ae;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --card: #1e1e1c; --text: #ececea; --muted: #9a9a94;
+      --border: #2e2e2b; --up: #4cc27f; --down: #e06c62; --unknown: #5c5c57;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1 { font-size: 20px; margin: 0 0 16px; letter-spacing: -0.01em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+       color: var(--muted); margin: 28px 0 10px; font-weight: 600; }
+  h2 code { text-transform: none; letter-spacing: 0; font-size: 12px; }
+  .ips { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .ip { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+        padding: 12px 14px; cursor: pointer; }
+  .ip .label { font-size: 12px; color: var(--muted); }
+  .ip .value { font: 600 18px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 1em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  a.card { display: block; background: var(--card); border: 1px solid var(--border);
+           border-radius: 10px; padding: 14px; color: inherit; text-decoration: none; }
+  a.card:hover { border-color: var(--muted); }
+  .name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--unknown); flex: none; }
+  .dot.up { background: var(--up); }
+  .dot.down { background: var(--down); }
+  .optional a.card.down { opacity: 0.55; }
+</style>
+</head>
+<body>
+<main>
+  <h1>neoflix</h1>
+
+  <div class="ips">
+    <div class="ip" data-key="lan_ip" title="Click to copy">
+      <div class="label">LAN IP</div><div class="value">…</div>
+    </div>
+    <div class="ip" data-key="public_ip" title="Click to copy">
+      <div class="label">Public IP</div><div class="value">…</div>
+    </div>
+  </div>
+  <div class="meta" id="meta"></div>
+
+  <h2>Core</h2>
+  <div class="grid" id="core"></div>
+
+  <section class="optional">
+    <h2>Optional (start with <code>docker compose up -d &lt;name&gt;</code>)</h2>
+    <div class="grid" id="optional"></div>
+  </section>
+</main>
+
+<script>
+  // Links are built from whatever host this page was opened at, so they work
+  // from the Mac (localhost), a phone (LAN IP), etc. without hardcoding an IP.
+  const SERVICES = {
+    core: [
+      { name: "Jellyfin",   port: 8096, path: "/web/", desc: "Media server" },
+      { name: "VueTorrent", port: 8080, path: "/",     desc: "Downloads" },
+      { name: "Radarr",     port: 7878, path: "/",     desc: "Movies" },
+      { name: "Sonarr",     port: 8989, path: "/",     desc: "TV" },
+      { name: "Bazarr",     port: 6767, path: "/",     desc: "Subtitles" },
+      { name: "Prowlarr",   port: 9696, path: "/",     desc: "Indexers" },
+    ],
+    optional: [
+      { name: "Jellyseerr",  port: 5055, path: "/", desc: "Requests" },
+      { name: "Uptime Kuma", port: 3001, path: "/", desc: "Monitoring" },
+    ],
+  };
+
+  const host = location.hostname || "localhost";
+  const urlFor = (s) => `http://${host}:${s.port}${s.path}`;
+
+  function render(listId, services) {
+    const el = document.getElementById(listId);
+    for (const s of services) {
+      const a = document.createElement("a");
+      a.className = "card";
+      a.href = urlFor(s);
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.innerHTML = `<div class="name"><span class="dot"></span></div><div class="desc"></div>`;
+      a.querySelector(".name").append(s.name);
+      a.querySelector(".desc").textContent = `${s.desc} · :${s.port}`;
+      s.el = a;
+      el.append(a);
+    }
+  }
+
+  // Reachability only: a no-cors fetch resolves on any HTTP response and
+  // rejects when nothing is listening. It can't read status codes.
+  async function check(s) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3000);
+    let up = false;
+    try {
+      await fetch(`http://${host}:${s.port}/`, { mode: "no-cors", cache: "no-store", signal: ctrl.signal });
+      up = true;
+    } catch (_) { /* down or unreachable */ }
+    clearTimeout(timer);
+    s.el.classList.toggle("down", !up);
+    const dot = s.el.querySelector(".dot");
+    dot.className = "dot " + (up ? "up" : "down");
+    dot.title = up ? "Reachable" : "Not reachable";
+  }
+
+  async function loadHost() {
+    const meta = document.getElementById("meta");
+    try {
+      const r = await fetch("host.json", { cache: "no-store" });
+      const d = await r.json();
+      for (const box of document.querySelectorAll(".ip")) {
+        box.querySelector(".value").textContent = d[box.dataset.key] || "unknown";
+      }
+      if (d.updated) {
+        const mins = Math.round((Date.now() - Date.parse(d.updated)) / 60000);
+        meta.textContent = `Updated ${mins <= 0 ? "just now" : mins + " min ago"}` +
+          (mins > 15 ? " (stale: is the com.neoflix.lan-ip agent running?)" : "");
+      }
+    } catch (_) {
+      meta.textContent = "host.json not found: run scripts/host/lan-ip.sh install";
+    }
+  }
+
+  for (const box of document.querySelectorAll(".ip")) {
+    box.addEventListener("click", () => {
+      const v = box.querySelector(".value").textContent;
+      if (navigator.clipboard) navigator.clipboard.writeText(v).catch(() => {});
+    });
+  }
+
+  render("core", SERVICES.core);
+  render("optional", SERVICES.optional);
+  const all = [...SERVICES.core, ...SERVICES.optional];
+  function refresh() { loadHost(); all.forEach(check); }
+  refresh();
+  setInterval(refresh, 30000);
+</script>
+</body>
+</html>

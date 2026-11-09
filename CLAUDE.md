@@ -54,6 +54,7 @@ there are rare.
 
 ## Quick reference
 
+The everyday dashboard is the host page on :3000 (outside Docker).
 Jellyseerr, Homepage, Uptime Kuma, Lifecycle (and Ofelia) are in the
 `extras` compose profile and **not running by default** (decision #16) —
 start one with `docker compose up -d <name>` before calling its API.
@@ -67,7 +68,8 @@ start one with `docker compose up -d <name>` before calling its API.
 | qBittorrent | 8080 | download client — WebUI credentials are not recoverable (only a password hash is in config); if the browser session isn't already logged in, ask the user rather than trying to bypass it |
 | Jellyseerr | 5055 | request UI |
 | Bazarr | 6767 | subtitles |
-| Homepage | 3000 | dashboard |
+| Dashboard (host) | 3000 | not a container: static page served from the Mac by `scripts/host/dashboard.sh` (launchd agent `com.neoflix.dashboard`); links + LAN/public IP |
+| Homepage | 3002 | optional (`extras`), superseded by the host dashboard |
 | Uptime Kuma | 3001 | monitoring |
 | Lifecycle | 8100 | custom service — `/status` merges Jellyseerr/Radarr/Sonarr into one per-request status (not currently on the dashboard); `/host` serves the Mac's LAN IP written by `scripts/host/lan-ip.sh` (launchd agent `com.neoflix.lan-ip`) |
 

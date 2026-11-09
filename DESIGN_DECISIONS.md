@@ -797,6 +797,52 @@ these docs assume).
 
 ---
 
+### 17. Host-side dashboard (`scripts/host/dashboard.sh`) — DECIDED
+
+**Context:** after decision #16 moved Homepage/Ofelia/Lifecycle to the
+opt-in `extras` profile, there was no everyday dashboard. What was
+actually wanted from one: clickable links to each service plus the Mac's
+LAN and public IP.
+
+**Decision:** a single static `index.html` (in
+`scripts/host/dashboard/`, no framework, no build) served from the Mac by
+a launchd agent running macOS's bundled `python3 -m http.server` on
+**:3000**, Homepage's old port, so existing bookmarks keep working.
+Homepage moved to :3002.
+- **Data:** `lan-ip.sh` (decision #9) now also writes `public_ip` (from
+  api.ipify.org, keeping the last known value on failure) and `updated` to
+  the same `host.json`; the page reads it every 30s.
+- **Links** are built from the hostname the page was opened at, so the
+  same page works from the Mac, a phone or the TV with no hardcoded IP
+  (the Mac's DHCP address has changed before).
+- **Up/down dots** come from a `no-cors` fetch in the browser: they show
+  reachability only, can't read status codes, and need no API keys.
+
+**Why on the host, not a container:** the LAN IP is only visible to a host
+process (house rule 6), and `lan-ip.sh` already runs there, so the
+container-side relay (Lifecycle's `/host`) becomes unnecessary. Cost
+measured at ~20 MB and 0% idle CPU, against ~170 MB+ for Homepage + Ofelia
++ Lifecycle inside the VM.
+
+**Constraints:**
+- The server's root is **only** `${DATA_ROOT}/config/host`. Never widen it:
+  sibling config folders hold API keys. `../` requests were tested and stay
+  inside that folder.
+- Python's `http.server` is not hardened: LAN-only, never port-forward it.
+- The page holds no API keys, by design (anything on the LAN can load it).
+- The page is *copied* into the served folder; after editing it, run
+  `scripts/host/dashboard.sh update`.
+
+**Alternatives considered:** Caddy/nginx (a new dependency to serve two
+files); macOS's built-in Apache (more config, no gain); opening the HTML
+as a `file://` (only works on the Mac itself); keeping Homepage (~115 MB
+plus Ofelia/Lifecycle just to feed it).
+
+**Deferred:** deleting Homepage, Ofelia and Lifecycle from the compose
+file entirely; they stay available under `extras` for now.
+
+---
+
 ## Known Issues
 
 ### Tizen seek hangs from trailing silent-audio padding

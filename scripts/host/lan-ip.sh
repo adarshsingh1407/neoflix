@@ -1,13 +1,14 @@
 #!/bin/sh
-# Publishes this Mac's current LAN IP for Homepage's "Network" card.
+# Publishes this Mac's current LAN and public IP to
+# ${DATA_ROOT}/config/host/host.json, which the host dashboard
+# (scripts/host/dashboard.sh, served from that same folder) reads. The
+# optional lifecycle container also serves the file at /host.
 #
 # Why this runs on the host: Docker Desktop NATs containers (CLAUDE.md house
 # rule 6), so nothing inside the stack can see the Mac's real LAN address.
-# This script writes it to ${DATA_ROOT}/config/host/host.json, which the
-# lifecycle container serves at /host for the card to read. (Homepage itself
-# only serves files present at its startup, so it can't serve this directly.)
 # A launchd agent re-runs it on every network change and every 5 minutes,
-# since the Mac's DHCP address has changed before.
+# since the Mac's DHCP address has changed before. The public IP comes from
+# api.ipify.org (that service sees the request; nothing else is sent).
 #
 # macOS only (uses route/ipconfig/launchd).
 #
@@ -34,9 +35,19 @@ write_ip() {
   [ -n "$iface" ] && ip="$(ipconfig getifaddr "$iface" 2>/dev/null || true)"
   [ -n "$ip" ] || ip="offline"
 
-  # Write-then-rename so lifecycle never serves a half-written file.
+  # Public IP: only accept something shaped like an IPv4 address. On failure
+  # keep the last known value, so a brief outage doesn't blank the dashboard.
+  public_ip="$(curl -fsS -m 5 https://api.ipify.org 2>/dev/null || true)"
+  if ! printf '%s' "$public_ip" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; then
+    public_ip="$(sed -n 's/.*"public_ip":"\([^"]*\)".*/\1/p' "$out_dir/host.json" 2>/dev/null || true)"
+    [ -n "$public_ip" ] || public_ip="unknown"
+  fi
+  updated="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # Write-then-rename so a reader never sees a half-written file.
   tmp="$out_dir/.host.json.tmp"
-  printf '{"lan_ip":"%s","interface":"%s"}\n' "$ip" "${iface:-none}" > "$tmp"
+  printf '{"lan_ip":"%s","interface":"%s","public_ip":"%s","updated":"%s"}\n' \
+    "$ip" "${iface:-none}" "$public_ip" "$updated" > "$tmp"
   mv "$tmp" "$out_dir/host.json"
 }
 

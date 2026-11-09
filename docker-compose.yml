@@ -181,6 +181,9 @@ services:
     networks:
       - neoflix-net
     environment:
+      # Homepage rejects requests whose Host header it doesn't know; default
+      # only allows :3000.
+      - HOMEPAGE_ALLOWED_HOSTS=localhost:3002,127.0.0.1:3002
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
@@ -188,7 +191,8 @@ services:
       - ${DATA_ROOT}/config/homepage:/app/config
       - ${DATA_ROOT}/config/homepage/images:/app/public/images
     ports:
-      - "3000:3000"
+      # 3002 on the host: port 3000 is the host dashboard (decision #17).
+      - "3002:3000"
 
   ofelia:
     image: mcuadros/ofelia:latest
