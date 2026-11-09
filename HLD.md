@@ -145,7 +145,8 @@ flowchart TB
     homepage -- reads public status page --> kuma
     homepage -- reads LAN IP via /host --> lifecycle
     lanip["lan-ip.sh<br>(host launchd agent)"] -- writes host.json<br>(mounted folder) --> lifecycle
-    lanip -- writes host.json --> dash["Host dashboard<br>:3000 (launchd, python http.server)"]
+    lanip -- writes host.json --> dash["Host dashboard<br>:3000 (launchd, serve.py)"]
+    dash -- caches artwork every 6h --> jellyfin
     lifecycle -- polls every 30s --> jellyseerr
     lifecycle -- polls every 30s --> radarr
     lifecycle -- polls every 30s --> sonarr

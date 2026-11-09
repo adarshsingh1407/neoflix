@@ -68,7 +68,7 @@ start one with `docker compose up -d <name>` before calling its API.
 | qBittorrent | 8080 | download client — WebUI credentials are not recoverable (only a password hash is in config); if the browser session isn't already logged in, ask the user rather than trying to bypass it |
 | Jellyseerr | 5055 | request UI |
 | Bazarr | 6767 | subtitles |
-| Dashboard (host) | 3000 | not a container: static page served from the Mac by `scripts/host/dashboard.sh` (launchd agent `com.neoflix.dashboard`); links + LAN/public IP |
+| Dashboard (host) | 3000 | not a container: static page served from the Mac by `scripts/host/dashboard.sh` (launchd agents `com.neoflix.dashboard` + `com.neoflix.dashboard-media`, which caches Jellyfin artwork every 6h; `dashboard.sh refresh` forces it); links, LAN/public IP, poster background |
 | Homepage | 3002 | optional (`extras`), superseded by the host dashboard |
 | Uptime Kuma | 3001 | monitoring |
 | Lifecycle | 8100 | custom service — `/status` merges Jellyseerr/Radarr/Sonarr into one per-request status (not currently on the dashboard); `/host` serves the Mac's LAN IP written by `scripts/host/lan-ip.sh` (launchd agent `com.neoflix.lan-ip`) |

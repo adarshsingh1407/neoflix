@@ -1,112 +1,312 @@
 <!doctype html>
 <!--
-  neoflix host dashboard. Served from ${DATA_ROOT}/config/host by
-  scripts/host/dashboard.sh (copied there on install); reads host.json,
-  written next to it by scripts/host/lan-ip.sh.
-  No API keys here, by design: it is reachable by anything on the LAN.
+  neoflix host dashboard, styled after tvOS (dark, glass materials, focus lift).
+  Served from ${DATA_ROOT}/config/host by scripts/host/dashboard.sh. Reads:
+    host.json        - LAN/public IP (scripts/host/lan-ip.sh)
+    media/media.json - cached Jellyfin artwork (dashboard/refresh_media.py)
+    icons/           - service logos (homarr-labs/dashboard-icons)
+  No API keys here, by design: anything on the LAN can load it.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
 <title>neoflix</title>
 <style>
   :root {
-    --bg: #f6f6f4; --card: #ffffff; --text: #1b1b1a; --muted: #6b6b66;
-    --border: #e2e2dd; --up: #2e9e5b; --down: #c94a3f; --unknown: #b5b5ae;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #141413; --card: #1e1e1c; --text: #ececea; --muted: #9a9a94;
-      --border: #2e2e2b; --up: #4cc27f; --down: #e06c62; --unknown: #5c5c57;
-    }
+    --bg: #0b0b0d;
+    --text: #f5f5f7;
+    --text-2: rgba(245, 245, 247, 0.62);
+    --text-3: rgba(245, 245, 247, 0.40);
+    --glass: rgba(255, 255, 255, 0.10);
+    --glass-strong: rgba(255, 255, 255, 0.16);
+    --hairline: rgba(255, 255, 255, 0.14);
+    --up: #30d158;
+    --down: #ff453a;
+    --radius-tile: 14px;
+    --radius-hero: 22px;
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+            "Helvetica Neue", "Segoe UI", sans-serif;
   }
   * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.4 var(--font);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 40px; }
-  h1 { font-size: 20px; margin: 0 0 16px; letter-spacing: -0.01em; }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
-       color: var(--muted); margin: 28px 0 10px; font-weight: 600; }
-  h2 code { text-transform: none; letter-spacing: 0; font-size: 12px; }
-  .ips { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-  .ip { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-        padding: 12px 14px; cursor: pointer; }
-  .ip .label { font-size: 12px; color: var(--muted); }
-  .ip .value { font: 600 18px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .meta { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 1em; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-  a.card { display: block; background: var(--card); border: 1px solid var(--border);
-           border-radius: 10px; padding: 14px; color: inherit; text-decoration: none; }
-  a.card:hover { border-color: var(--muted); }
-  .name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--unknown); flex: none; }
-  .dot.up { background: var(--up); }
+
+  /* ---------- Ambient poster wall ---------- */
+  .ambient {
+    position: fixed; inset: 0; z-index: 0; overflow: hidden;
+    background: radial-gradient(120% 90% at 20% 0%, #1d2440 0%, #0b0b0d 60%);
+  }
+  .wall {
+    position: absolute; left: 50%; top: 50%;
+    width: 170vmax; height: 170vmax;
+    display: grid; grid-template-columns: repeat(10, 1fr); gap: 1.2vmax;
+    transform: translate(-50%, -50%) rotate(-12deg);
+    filter: blur(34px) saturate(1.5) brightness(0.55);
+    opacity: 0; transition: opacity 1.6s var(--ease);
+    animation: drift 140s linear infinite alternate;
+  }
+  .wall.ready { opacity: 1; }
+  .wall img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; }
+  @keyframes drift {
+    from { transform: translate(-50%, -50%) rotate(-12deg); }
+    to   { transform: translate(-46%, -54%) rotate(-12deg); }
+  }
+  .ambient::after {   /* vignette + legibility scrim */
+    content: ""; position: absolute; inset: 0;
+    background:
+      linear-gradient(180deg, rgba(11,11,13,0.35) 0%, rgba(11,11,13,0.15) 35%, rgba(11,11,13,0.85) 100%),
+      radial-gradient(140% 100% at 50% 40%, transparent 40%, rgba(0,0,0,0.6) 100%);
+  }
+
+  main {
+    position: relative; z-index: 1;
+    max-width: 1280px; margin: 0 auto;
+    padding: max(20px, env(safe-area-inset-top)) 24px 48px;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .wordmark { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+  .clock { font-size: 22px; font-weight: 500; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+  .chip {
+    display: inline-flex; align-items: baseline; gap: 8px;
+    padding: 7px 14px; border-radius: 999px;
+    background: var(--glass); border: 1px solid var(--hairline);
+    -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
+    cursor: pointer; user-select: all;
+  }
+  .chip .k { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+  .chip .v { font: 600 14px/1 ui-monospace, "SF Mono", Menlo, monospace; }
+  .meta { font-size: 12px; color: var(--text-3); }
+
+  /* ---------- Top Shelf hero ---------- */
+  .shelf {
+    position: relative; margin-top: 22px; border-radius: var(--radius-hero); overflow: hidden;
+    aspect-ratio: 21 / 8; min-height: 260px;
+    background: #15151a;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.7), 0 0 0 1px var(--hairline);
+  }
+  .shelf[hidden] { display: none; }
+  .slide {
+    position: absolute; inset: 0; opacity: 0;
+    transition: opacity 900ms var(--ease);
+    color: inherit; text-decoration: none;
+  }
+  .slide.active { opacity: 1; z-index: 1; }
+  .slide .bd {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    transform: scale(1.06); transition: transform 9s linear;
+  }
+  .slide.active .bd { transform: scale(1); }
+  .slide::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      linear-gradient(90deg, rgba(8,8,10,0.92) 0%, rgba(8,8,10,0.55) 42%, rgba(8,8,10,0) 75%),
+      linear-gradient(0deg, rgba(8,8,10,0.75) 0%, rgba(8,8,10,0) 45%);
+  }
+  .slide .info {
+    position: absolute; z-index: 2; left: 4%; bottom: 12%; width: min(46%, 520px);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .slide .logo { max-width: 100%; max-height: 110px; object-fit: contain; object-position: left bottom; align-self: flex-start;
+                 filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5)); }
+  .slide .title { font-size: clamp(26px, 3.4vw, 44px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; }
+  .slide .facts { font-size: 13px; font-weight: 500; color: var(--text-2); }
+  .slide .overview {
+    font-size: 14px; color: var(--text-2); margin: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .play {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 20px; border-radius: 999px;
+    background: rgba(255,255,255,0.92); color: #111; font-weight: 600; font-size: 14px;
+    transition: transform 250ms var(--ease), background 250ms;
+  }
+  .slide:hover .play, .slide:focus-visible .play { transform: scale(1.05); background: #fff; }
+  .slide:focus-visible { outline: none; }
+  .shelf:focus-within { box-shadow: 0 30px 60px -20px rgba(0,0,0,0.7), 0 0 0 2px rgba(255,255,255,0.7); }
+  .pager { position: absolute; z-index: 3; right: 3%; bottom: 7%; display: flex; gap: 7px; }
+  .pager button {
+    width: 7px; height: 7px; padding: 0; border: 0; border-radius: 99px;
+    background: rgba(255,255,255,0.35); cursor: pointer; transition: width 300ms var(--ease), background 300ms;
+  }
+  .pager button.on { width: 22px; background: rgba(255,255,255,0.9); }
+
+  /* ---------- Rows ---------- */
+  h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 34px 0 14px; }
+  h2 small { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 8px; letter-spacing: 0; }
+  h2 small code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; }
+
+  .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 26px 22px; }
+
+  /* tvOS-style app tile: lifts, tilts toward the pointer, catches a glare */
+  .app { display: block; color: inherit; text-decoration: none; perspective: 800px; outline: none; }
+  .tile {
+    position: relative; aspect-ratio: 5 / 3; border-radius: var(--radius-tile);
+    background: var(--tile-bg, linear-gradient(160deg, #2a2a33, #15151b));
+    box-shadow: 0 10px 24px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.12);
+    display: grid; place-items: center; overflow: hidden;
+    transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0);
+    transition: transform 380ms var(--ease), box-shadow 380ms var(--ease);
+    will-change: transform;
+  }
+  .tile img { height: 46%; max-width: 62%; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.35));
+              transform: translateZ(30px); transition: transform 380ms var(--ease); }
+  .tile::after {   /* specular glare that follows the pointer */
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(60% 80% at var(--gx, 50%) var(--gy, 0%), rgba(255,255,255,0.32), transparent 60%);
+    transition: opacity 380ms var(--ease);
+  }
+  .app:hover .tile, .app:focus-visible .tile {
+    transform: scale(1.1) translateY(-6px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    box-shadow: 0 34px 50px -18px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+  .app:hover .tile::after, .app:focus-visible .tile::after { opacity: 1; }
+  .app:focus-visible .tile { outline: 2px solid rgba(255,255,255,0.85); outline-offset: 3px; }
+  .label {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    margin-top: 12px; font-size: 14px; font-weight: 500; color: var(--text-2);
+    transition: color 300ms, transform 380ms var(--ease);
+  }
+  .app:hover .label, .app:focus-visible .label { color: var(--text); transform: translateY(6px); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex: none; }
+  .dot.up { background: var(--up); box-shadow: 0 0 8px var(--up); }
   .dot.down { background: var(--down); }
-  .optional a.card.down { opacity: 0.55; }
+  .optional .app.down .tile { filter: grayscale(0.85) brightness(0.6); }
+  .optional .app.down .label { color: var(--text-3); }
+
+  .posters { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(128px, 150px);
+             gap: 18px; overflow-x: auto; padding: 8px 4px 22px; margin: 0 -4px; scrollbar-width: none; }
+  .posters::-webkit-scrollbar { display: none; }
+  .poster { display: block; border-radius: 10px; outline: none; color: inherit; text-decoration: none;
+            transition: transform 380ms var(--ease); }
+  .poster img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; display: block;
+                box-shadow: 0 10px 20px -10px rgba(0,0,0,0.8); transition: box-shadow 380ms var(--ease); }
+  .poster:hover, .poster:focus-visible { transform: scale(1.08) translateY(-4px); }
+  .poster:hover img, .poster:focus-visible img { box-shadow: 0 26px 36px -14px rgba(0,0,0,0.9); }
+  .poster:focus-visible img { outline: 2px solid rgba(255,255,255,0.85); outline-offset: 3px; }
+  .poster .cap { font-size: 12px; color: var(--text-3); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  @media (max-width: 720px) {
+    main { padding-left: 16px; padding-right: 16px; }
+    .shelf { aspect-ratio: 4 / 5; }
+    .slide::after { background: linear-gradient(0deg, rgba(8,8,10,0.95) 0%, rgba(8,8,10,0.4) 55%, rgba(8,8,10,0) 80%); }
+    .slide .info { width: auto; right: 6%; left: 6%; bottom: 14%; }
+    .apps { grid-template-columns: repeat(2, 1fr); gap: 22px 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wall { animation: none; }
+    .slide, .slide .bd, .tile, .tile img, .label, .poster { transition: none !important; }
+  }
 </style>
 </head>
 <body>
+<div class="ambient" aria-hidden="true"><div class="wall" id="wall"></div></div>
+
 <main>
-  <h1>neoflix</h1>
-
-  <div class="ips">
-    <div class="ip" data-key="lan_ip" title="Click to copy">
-      <div class="label">LAN IP</div><div class="value">…</div>
-    </div>
-    <div class="ip" data-key="public_ip" title="Click to copy">
-      <div class="label">Public IP</div><div class="value">…</div>
-    </div>
+  <header class="topbar">
+    <div class="wordmark">neoflix</div>
+    <div class="clock" id="clock"></div>
+  </header>
+  <div class="chips">
+    <span class="chip" data-key="lan_ip" title="Click to copy"><span class="k">LAN</span><span class="v">…</span></span>
+    <span class="chip" data-key="public_ip" title="Click to copy"><span class="k">Public</span><span class="v">…</span></span>
+    <span class="meta" id="meta"></span>
   </div>
-  <div class="meta" id="meta"></div>
 
-  <h2>Core</h2>
-  <div class="grid" id="core"></div>
+  <section class="shelf" id="shelf" hidden aria-label="Featured movies">
+    <div class="pager" id="pager"></div>
+  </section>
+
+  <h2>Apps</h2>
+  <div class="apps" id="core"></div>
+
+  <section id="recent-section" hidden>
+    <h2>Recently Added</h2>
+    <div class="posters" id="recent"></div>
+  </section>
 
   <section class="optional">
-    <h2>Optional (start with <code>docker compose up -d &lt;name&gt;</code>)</h2>
-    <div class="grid" id="optional"></div>
+    <h2>More <small>start with <code>docker compose up -d &lt;name&gt;</code></small></h2>
+    <div class="apps" id="optional"></div>
   </section>
 </main>
 
 <script>
   // Links are built from whatever host this page was opened at, so they work
-  // from the Mac (localhost), a phone (LAN IP), etc. without hardcoding an IP.
+  // from the Mac (localhost), a phone or the TV (LAN IP) with no hardcoded IP.
+  const host = location.hostname || "localhost";
+  const JELLYFIN = `http://${host}:8096`;
+
   const SERVICES = {
     core: [
-      { name: "Jellyfin",   port: 8096, path: "/web/", desc: "Media server" },
-      { name: "VueTorrent", port: 8080, path: "/",     desc: "Downloads" },
-      { name: "Radarr",     port: 7878, path: "/",     desc: "Movies" },
-      { name: "Sonarr",     port: 8989, path: "/",     desc: "TV" },
-      { name: "Bazarr",     port: 6767, path: "/",     desc: "Subtitles" },
-      { name: "Prowlarr",   port: 9696, path: "/",     desc: "Indexers" },
+      { name: "Jellyfin",   port: 8096, path: "/web/", icon: "jellyfin.svg",   bg: "linear-gradient(150deg,#1b1546,#0a1a3a 70%)" },
+      { name: "VueTorrent", port: 8080, path: "/",     icon: "vuetorrent.png", bg: "linear-gradient(150deg,#16352b,#0c1c22 70%)" },
+      { name: "Radarr",     port: 7878, path: "/",     icon: "radarr.svg",     bg: "linear-gradient(150deg,#3a300c,#1a1608 70%)" },
+      { name: "Sonarr",     port: 8989, path: "/",     icon: "sonarr.svg",     bg: "linear-gradient(150deg,#0f3049,#0a1826 70%)" },
+      { name: "Bazarr",     port: 6767, path: "/",     icon: "bazarr.svg",     bg: "linear-gradient(150deg,#2c2148,#141026 70%)" },
+      { name: "Prowlarr",   port: 9696, path: "/",     icon: "prowlarr.svg",   bg: "linear-gradient(150deg,#41230e,#1d1009 70%)" },
     ],
     optional: [
-      { name: "Jellyseerr",  port: 5055, path: "/", desc: "Requests" },
-      { name: "Uptime Kuma", port: 3001, path: "/", desc: "Monitoring" },
+      { name: "Jellyseerr",  port: 5055, path: "/", icon: "jellyseerr.svg",  bg: "linear-gradient(150deg,#211d55,#0f0d2a 70%)" },
+      { name: "Uptime Kuma", port: 3001, path: "/", icon: "uptime-kuma.svg", bg: "linear-gradient(150deg,#0f3a26,#081c13 70%)" },
     ],
   };
 
-  const host = location.hostname || "localhost";
-  const urlFor = (s) => `http://${host}:${s.port}${s.path}`;
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  function render(listId, services) {
-    const el = document.getElementById(listId);
+  // ---------- App tiles ----------
+  function renderApps(listId, services) {
+    const list = document.getElementById(listId);
     for (const s of services) {
-      const a = document.createElement("a");
-      a.className = "card";
-      a.href = urlFor(s);
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.innerHTML = `<div class="name"><span class="dot"></span></div><div class="desc"></div>`;
-      a.querySelector(".name").append(s.name);
-      a.querySelector(".desc").textContent = `${s.desc} · :${s.port}`;
+      const a = el("a", "app");
+      a.href = `http://${host}:${s.port}${s.path}`;
+      a.target = "_blank"; a.rel = "noopener";
+      const tile = el("div", "tile");
+      tile.style.setProperty("--tile-bg", s.bg);
+      const img = el("img"); img.src = `icons/${s.icon}`; img.alt = "";
+      tile.append(img);
+      const label = el("div", "label");
+      s.dot = el("span", "dot");
+      label.append(s.dot, s.name);
+      a.append(tile, label);
+      if (!reduceMotion) addTilt(a, tile);
       s.el = a;
-      el.append(a);
+      list.append(a);
     }
+  }
+
+  // Parallax tilt + glare position, pointer only (keyboard focus just lifts).
+  function addTilt(anchor, tile) {
+    anchor.addEventListener("pointermove", (e) => {
+      const r = tile.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      tile.style.setProperty("--ry", `${(x - 0.5) * 14}deg`);
+      tile.style.setProperty("--rx", `${(0.5 - y) * 12}deg`);
+      tile.style.setProperty("--gx", `${x * 100}%`);
+      tile.style.setProperty("--gy", `${y * 100}%`);
+    });
+    anchor.addEventListener("pointerleave", () => {
+      for (const p of ["--rx", "--ry", "--gx", "--gy"]) tile.style.removeProperty(p);
+    });
   }
 
   // Reachability only: a no-cors fetch resolves on any HTTP response and
@@ -115,48 +315,134 @@
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 3000);
     let up = false;
-    try {
-      await fetch(`http://${host}:${s.port}/`, { mode: "no-cors", cache: "no-store", signal: ctrl.signal });
-      up = true;
-    } catch (_) { /* down or unreachable */ }
+    try { await fetch(`http://${host}:${s.port}/`, { mode: "no-cors", cache: "no-store", signal: ctrl.signal }); up = true; }
+    catch (_) { /* down or unreachable */ }
     clearTimeout(timer);
     s.el.classList.toggle("down", !up);
-    const dot = s.el.querySelector(".dot");
-    dot.className = "dot " + (up ? "up" : "down");
-    dot.title = up ? "Reachable" : "Not reachable";
+    s.dot.className = "dot " + (up ? "up" : "down");
+    s.dot.title = up ? "Running" : "Not running";
   }
 
+  // ---------- IPs + clock ----------
   async function loadHost() {
     const meta = document.getElementById("meta");
     try {
-      const r = await fetch("host.json", { cache: "no-store" });
-      const d = await r.json();
-      for (const box of document.querySelectorAll(".ip")) {
-        box.querySelector(".value").textContent = d[box.dataset.key] || "unknown";
-      }
+      const d = await (await fetch("host.json", { cache: "no-store" })).json();
+      for (const c of document.querySelectorAll(".chip")) c.querySelector(".v").textContent = d[c.dataset.key] || "unknown";
       if (d.updated) {
         const mins = Math.round((Date.now() - Date.parse(d.updated)) / 60000);
-        meta.textContent = `Updated ${mins <= 0 ? "just now" : mins + " min ago"}` +
-          (mins > 15 ? " (stale: is the com.neoflix.lan-ip agent running?)" : "");
+        meta.textContent = mins > 15 ? `IPs ${mins} min old: is com.neoflix.lan-ip running?` : "";
       }
     } catch (_) {
-      meta.textContent = "host.json not found: run scripts/host/lan-ip.sh install";
+      meta.textContent = "host.json missing: run scripts/host/lan-ip.sh install";
     }
   }
-
-  for (const box of document.querySelectorAll(".ip")) {
-    box.addEventListener("click", () => {
-      const v = box.querySelector(".value").textContent;
+  for (const c of document.querySelectorAll(".chip")) {
+    c.addEventListener("click", () => {
+      const v = c.querySelector(".v").textContent;
       if (navigator.clipboard) navigator.clipboard.writeText(v).catch(() => {});
     });
   }
+  const clock = document.getElementById("clock");
+  const tick = () => { clock.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); };
 
-  render("core", SERVICES.core);
-  render("optional", SERVICES.optional);
+  // ---------- Artwork: poster wall, Top Shelf, Recently Added ----------
+  const details = (m) => `${JELLYFIN}/web/#/details?id=${m.id}`;
+
+  function renderWall(movies) {
+    const wall = document.getElementById("wall");
+    const posters = movies.filter((m) => m.poster).map((m) => m.poster);
+    if (!posters.length) return;
+    // 10 columns x ~9 rows; repeat shuffled passes so neighbours vary.
+    const frag = document.createDocumentFragment();
+    let pool = [];
+    for (let i = 0; i < 90; i++) {
+      if (!pool.length) pool = shuffle(posters);
+      const img = el("img"); img.src = pool.pop(); img.alt = ""; img.decoding = "async";
+      frag.append(img);
+    }
+    wall.append(frag);
+    // Fade in once the first few have loaded, not tile by tile.
+    let loaded = 0;
+    for (const img of wall.querySelectorAll("img")) {
+      img.addEventListener("load", () => { if (++loaded === 12) wall.classList.add("ready"); }, { once: true });
+    }
+    setTimeout(() => wall.classList.add("ready"), 2500);
+  }
+
+  function renderShelf(movies) {
+    const featured = shuffle(movies.filter((m) => m.backdrop)).slice(0, 6);
+    if (!featured.length) return;
+    const shelf = document.getElementById("shelf");
+    const pager = document.getElementById("pager");
+    const slides = featured.map((m, i) => {
+      const a = el("a", "slide");
+      a.href = details(m); a.target = "_blank"; a.rel = "noopener";
+      a.tabIndex = i === 0 ? 0 : -1;
+      const bd = el("img", "bd"); bd.src = m.backdrop; bd.alt = "";
+      const info = el("div", "info");
+      if (m.logo) { const lg = el("img", "logo"); lg.src = m.logo; lg.alt = m.name; info.append(lg); }
+      else info.append(el("div", "title", m.name));
+      const facts = [m.year, (m.genres || []).join(", "), m.minutes ? `${Math.floor(m.minutes / 60)}h ${m.minutes % 60}m` : null, m.rating]
+        .filter(Boolean).join("  ·  ");
+      if (facts) info.append(el("div", "facts", facts));
+      if (m.overview) info.append(el("p", "overview", m.overview));
+      info.append(el("span", "play", "▶  Open in Jellyfin"));
+      a.append(bd, info);
+      shelf.insertBefore(a, pager);
+      return a;
+    });
+    let cur = 0, timer;
+    const dots = featured.map((_, i) => {
+      const b = el("button"); b.setAttribute("aria-label", `Show ${featured[i].name}`);
+      b.addEventListener("click", () => { show(i); restart(); });
+      pager.append(b); return b;
+    });
+    function show(i) {
+      slides[cur].classList.remove("active"); slides[cur].tabIndex = -1; dots[cur].classList.remove("on");
+      cur = (i + slides.length) % slides.length;
+      slides[cur].classList.add("active"); slides[cur].tabIndex = 0; dots[cur].classList.add("on");
+    }
+    function restart() { clearInterval(timer); if (!reduceMotion && slides.length > 1) timer = setInterval(() => show(cur + 1), 8000); }
+    shelf.addEventListener("mouseenter", () => clearInterval(timer));
+    shelf.addEventListener("mouseleave", restart);
+    shelf.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight") { show(cur + 1); restart(); }
+      if (e.key === "ArrowLeft") { show(cur - 1); restart(); }
+    });
+    show(0); restart();
+    shelf.hidden = false;
+  }
+
+  function renderRecent(movies) {
+    const list = document.getElementById("recent");
+    for (const m of movies.filter((m) => m.poster).slice(0, 12)) {   // media.json is newest-first
+      const a = el("a", "poster");
+      a.href = details(m); a.target = "_blank"; a.rel = "noopener"; a.title = m.name;
+      const img = el("img"); img.src = m.poster; img.alt = m.name; img.loading = "lazy";
+      a.append(img, el("div", "cap", m.year ? `${m.name} (${m.year})` : m.name));
+      list.append(a);
+    }
+    if (list.children.length) document.getElementById("recent-section").hidden = false;
+  }
+
+  async function loadMedia() {
+    try {
+      const { movies = [] } = await (await fetch("media/media.json", { cache: "no-store" })).json();
+      renderWall(movies);
+      renderShelf(movies);
+      renderRecent(movies);
+    } catch (_) { /* no artwork yet: the gradient background still works */ }
+  }
+
+  // ---------- Boot ----------
+  renderApps("core", SERVICES.core);
+  renderApps("optional", SERVICES.optional);
   const all = [...SERVICES.core, ...SERVICES.optional];
   function refresh() { loadHost(); all.forEach(check); }
-  refresh();
-  setInterval(refresh, 30000);
+  tick(); setInterval(tick, 15000);
+  refresh(); setInterval(refresh, 30000);
+  loadMedia();
 </script>
 </body>
 </html>

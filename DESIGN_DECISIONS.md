@@ -806,8 +806,8 @@ LAN and public IP.
 
 **Decision:** a single static `index.html` (in
 `scripts/host/dashboard/`, no framework, no build) served from the Mac by
-a launchd agent running macOS's bundled `python3 -m http.server` on
-**:3000**, Homepage's old port, so existing bookmarks keep working.
+a launchd agent running `scripts/host/dashboard/serve.py` (macOS's
+bundled Python, stdlib `http.server`) on **:3000**, Homepage's old port, so existing bookmarks keep working.
 Homepage moved to :3002.
 - **Data:** `lan-ip.sh` (decision #9) now also writes `public_ip` (from
   api.ipify.org, keeping the last known value on failure) and `updated` to
@@ -817,6 +817,26 @@ Homepage moved to :3002.
   (the Mac's DHCP address has changed before).
 - **Up/down dots** come from a `no-cors` fetch in the browser: they show
   reachability only, can't read status codes, and need no API keys.
+- **Look (2026-11-09 revision):** styled after tvOS: a blurred, slowly
+  drifting wall of the library's posters as the background, a rotating
+  "Top Shelf" hero (backdrop + title logo, links to the title in
+  Jellyfin), app-icon tiles that lift/tilt on hover or keyboard focus, and a
+  Recently Added poster row. Service logos are bundled in
+  `scripts/host/dashboard/icons/` (from homarr-labs/dashboard-icons).
+- **Artwork** is cached on the host by `dashboard/refresh_media.py` (stdlib
+  only) into `config/host/media/` with `media.json`: small posters,
+  backdrops and logos (~1.4 MB for 10 movies). A third launchd agent,
+  `com.neoflix.dashboard-media`, refreshes it at load and every 6h;
+  `dashboard.sh refresh` forces it. The script reads the Jellyfin key from
+  `.env` but never writes it into the served folder. Filenames include the
+  image tag, so changed artwork gets a new URL and unchanged files aren't
+  re-downloaded. Caching locally (rather than linking Jellyfin's image URLs)
+  keeps the page working while Jellyfin is down.
+- **Why `serve.py` instead of `python3 -m http.server`:** the stock server's
+  listen backlog is 5. Measured: 63 of 111 parallel image requests got
+  connection resets (broken images on page load); with a 128 backlog, 0 of
+  111. It also sends `Cache-Control` (a day for media/icons, `no-cache` for
+  the page and JSON) and drops per-request logging.
 
 **Why on the host, not a container:** the LAN IP is only visible to a host
 process (house rule 6), and `lan-ip.sh` already runs there, so the
@@ -828,10 +848,11 @@ measured at ~20 MB and 0% idle CPU, against ~170 MB+ for Homepage + Ofelia
 - The server's root is **only** `${DATA_ROOT}/config/host`. Never widen it:
   sibling config folders hold API keys. `../` requests were tested and stay
   inside that folder.
-- Python's `http.server` is not hardened: LAN-only, never port-forward it.
+- Python's `http.server` (which `serve.py` wraps) is not hardened:
+  LAN-only, never port-forward it.
 - The page holds no API keys, by design (anything on the LAN can load it).
-- The page is *copied* into the served folder; after editing it, run
-  `scripts/host/dashboard.sh update`.
+- The page and icons are *copied* into the served folder; after editing
+  them, run `scripts/host/dashboard.sh update`.
 
 **Alternatives considered:** Caddy/nginx (a new dependency to serve two
 files); macOS's built-in Apache (more config, no gain); opening the HTML

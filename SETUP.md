@@ -406,12 +406,16 @@ Homepage only serves files that existed when it started, so
 
 **The dashboard on port 3000 (macOS only).** A single static page served
 from the Mac itself rather than from Docker, because only the Mac can see
-its own local network address. Two small background jobs run it:
+its own local network address. Small background jobs run it:
 
 ```bash
 scripts/host/lan-ip.sh install     # writes the local + public IP every 5 min
-scripts/host/dashboard.sh install  # serves the page on port 3000
+scripts/host/dashboard.sh install  # serves the page on port 3000 and caches
+                                   # movie posters/backdrops from Jellyfin every 6h
 ```
+
+New movies show up in the poster background within 6 hours, or straight away
+with `scripts/host/dashboard.sh refresh`.
 
 The first time, macOS may ask whether `python3` may accept incoming
 connections: allow it, or the page won't open from your phone/TV. After
