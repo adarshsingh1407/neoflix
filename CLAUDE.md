@@ -54,6 +54,10 @@ there are rare.
 
 ## Quick reference
 
+Jellyseerr, Homepage, Uptime Kuma, Lifecycle (and Ofelia) are in the
+`extras` compose profile and **not running by default** (decision #16) —
+start one with `docker compose up -d <name>` before calling its API.
+
 | Service | Port | Notes |
 |---|---|---|
 | Jellyfin | 8096 | media server |
@@ -111,6 +115,11 @@ paths are `${DATA_ROOT}/media/...` and `${DATA_ROOT}/downloads/...` (see
    `GET /Sessions` (look at `TranscodingInfo.TranscodeReasons`) before
    assuming a general system problem. `SubtitleCodecNotSupported` on an
    otherwise direct-playable file is the most common cause seen so far.
+   The preferred fix is the *file* (text subtitle for a PGS-only title,
+   non-AV1 release), not more CPU. Video transcoding is switched off in
+   the user policy (decision #16), but Jellyfin 12.4.0 was verified to
+   **ignore that flag** — transcodes still happen, so don't rely on it.
+   Run media-fixing ffmpeg on the host, never via `docker exec jellyfin`.
 8. **A title can hang/freeze/jump wrong on seek (Tizen especially) if its
    audio track has trailing silence appended past the video's real
    length.** Jellyfin reports the longer of the two streams as the

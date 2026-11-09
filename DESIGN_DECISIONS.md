@@ -726,6 +726,77 @@ of the stack.
 
 ---
 
+### 16. Resource sizing (Docker Desktop VM + per-container limits) — DECIDED
+
+**Context (measured 2026-11-09, stack idle 40h):** the host is an 8 GB M1.
+Docker Desktop was on defaults (4 GB VM, all 8 CPUs, 1 GB swap) and the VM
+was the largest process on the Mac (~4.1 GB resident) while macOS sat on
+~8.7 GB of swap. Inside the VM, all 11 containers summed to only ~2.0 GB;
+the rest was Linux page cache the VM never hands back to macOS. Load
+average was ~0.4.
+
+**Decision:**
+- **Docker Desktop VM: 2.5 GB memory, 4 CPUs, 1 GB swap** (first cut was
+  3 GB with all 11 services; lowered once the extras below were made
+  opt-in). The core six use ~1.05 GB steady, leaving room for Jellyfin's
+  observed ~0.9 GB peak during a transcode. Shrinking the containers alone
+  frees nothing on the Mac: Apple's virtualization layer keeps the VM's
+  full allocation resident (the guest fills spare RAM with page cache), so
+  only the VM size itself matters. 4 CPUs caps how hard a transcode can
+  starve macOS (house rule 7). Set in Docker Desktop → Settings →
+  Resources; it is host config, not part of this repo.
+- **Optional services behind the `extras` compose profile:** Jellyseerr,
+  Lifecycle (reads Jellyseerr), Homepage, Ofelia (only feeds Homepage) and
+  Uptime Kuma (~0.5 GB together, ~0.8 GB at peak). Plain
+  `docker compose up -d` starts only the core six (Jellyfin, Radarr,
+  Sonarr, Prowlarr, qBittorrent, Bazarr); adds go through Radarr/Sonarr
+  directly (`neoflix-add`), so nothing core depends on the extras. Start
+  them on demand with `docker compose up -d <name>` or
+  `docker compose --profile extras up -d`; their config/data under
+  `${DATA_ROOT}/config/` is untouched. Running all of them long-term needs
+  the VM back at 3 GB. `scripts/bootstrap.py` passes `--profile extras` so
+  first-time setup still configures everything.
+- **`mem_limit` per service in `docker-compose.yml`**, at ~2× measured
+  idle usage. These are ceilings, not reservations (their sum can exceed
+  the VM), so one runaway container gets OOM-killed on its own instead of
+  pushing the whole VM into OOM. Jellyfin gets the largest (1.5 GB) because
+  ffmpeg runs inside its cgroup. Bazarr gets 512 MB rather than 384 MB
+  because a manual ffsubsync run (see `neoflix-fix-subs`) loads audio into
+  its process.
+- **Jellyfin transcode throttling + segment deletion on** (Dashboard →
+  Playback → Transcoding). Throttling keeps ffmpeg a few minutes ahead of
+  the player instead of transcoding the whole file at full speed; segment
+  deletion stops old segments piling up in `config/jellyfin/cache/transcodes`.
+  No hardware acceleration is possible — Docker Desktop on macOS has no GPU
+  passthrough.
+- **Video transcoding disabled for the user account** (user policy
+  `EnableVideoPlaybackTranscoding=false`; audio transcoding and remuxing
+  stay on — both are cheap). Playback history (Sep 14–Nov 8) showed 57 of
+  83 plays direct, the rest remux or audio-only, and exactly one real video
+  transcode (Hero in Chrome, burning in a PGS-only subtitle). The intent:
+  instead of re-encoding the library, fix the individual *file* that would
+  need a video transcode (fetch a text subtitle for a PGS-only title,
+  replace an AV1 release the TV can't decode).
+  **Caveat, verified 2026-11-09 on Jellyfin 12.4.0: the flag is not
+  enforced.** Jellyfin logs that it read the policy, but a temporary
+  non-admin test user with the same policy still got a full H.264
+  transcode (ffmpeg started and served segments). Treat the flag as a
+  statement of intent only; it does not prevent transcodes. Real
+  enforcement would need something else (e.g. the installed Transcode
+  Guard plugin's limit) and has not been set up.
+- **Media-fixing ffmpeg work runs on the host**, not via
+  `docker exec jellyfin` (`neoflix-fix-audio`/`-subs`/`-seek` skills), so
+  one-off analysis/encoding never competes with playback inside the VM.
+
+**Revisit if:** a container keeps getting OOM-killed (`docker inspect
+<name> --format '{{.State.OOMKilled}}'`) — raise that one limit; 4K or
+high-bitrate transcodes stutter — raise VM CPUs to 6; the Mac still
+swaps heavily — consider OrbStack, which returns unused VM memory to
+macOS dynamically (deferred: it replaces Docker Desktop, which the rest of
+these docs assume).
+
+---
+
 ## Known Issues
 
 ### Tizen seek hangs from trailing silent-audio padding

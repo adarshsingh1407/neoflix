@@ -396,8 +396,11 @@ def create_folders():
 # ---------------------------------------------------------------------------
 
 def docker_compose_up():
-    log("Starting the stack (docker compose up -d)")
-    r = run(["docker", "compose", "up", "-d"], cwd=REPO_ROOT)
+    # --profile extras: first-time setup configures Jellyseerr/Homepage/etc.
+    # too, so start everything here even though they're off by default
+    # afterwards (DESIGN_DECISIONS.md decision #16).
+    log("Starting the stack (docker compose --profile extras up -d)")
+    r = run(["docker", "compose", "--profile", "extras", "up", "-d"], cwd=REPO_ROOT)
     if r.returncode != 0:
         sys.exit(f"docker compose up -d failed:\n{r.stdout}\n{r.stderr}")
 
