@@ -225,7 +225,7 @@
     <span class="meta" id="meta"></span>
   </div>
 
-  <section class="shelf" id="shelf" hidden aria-label="Featured movies">
+  <section class="shelf" id="shelf" hidden aria-label="Featured titles">
     <div class="pager" id="pager"></div>
   </section>
 
@@ -383,7 +383,10 @@
       const info = el("div", "info");
       if (m.logo) { const lg = el("img", "logo"); lg.src = m.logo; lg.alt = m.name; info.append(lg); }
       else info.append(el("div", "title", m.name));
-      const facts = [m.year, (m.genres || []).join(", "), m.minutes ? `${Math.floor(m.minutes / 60)}h ${m.minutes % 60}m` : null, m.rating]
+      const length = m.type === "series"
+        ? (m.episodes ? `${m.episodes} episode${m.episodes === 1 ? "" : "s"}` : "Series")
+        : (m.minutes ? `${Math.floor(m.minutes / 60)}h ${m.minutes % 60}m` : null);
+      const facts = [m.year, (m.genres || []).join(", "), length, m.rating]
         .filter(Boolean).join("  ·  ");
       if (facts) info.append(el("div", "facts", facts));
       if (m.overview) info.append(el("p", "overview", m.overview));
@@ -416,7 +419,7 @@
 
   function renderRecent(movies) {
     const list = document.getElementById("recent");
-    for (const m of movies.filter((m) => m.poster).slice(0, 12)) {   // media.json is newest-first
+    for (const m of movies.filter((m) => m.poster).slice(0, 16)) {   // media.json is newest-first
       const a = el("a", "poster");
       a.href = details(m); a.target = "_blank"; a.rel = "noopener"; a.title = m.name;
       const img = el("img"); img.src = m.poster; img.alt = m.name; img.loading = "lazy";
@@ -428,7 +431,8 @@
 
   async function loadMedia() {
     try {
-      const { movies = [] } = await (await fetch("media/media.json", { cache: "no-store" })).json();
+      const data = await (await fetch("media/media.json", { cache: "no-store" })).json();
+      const movies = data.titles || data.movies || [];   // "movies" = pre-series format
       renderWall(movies);
       renderShelf(movies);
       renderRecent(movies);

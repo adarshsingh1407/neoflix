@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cache movie artwork from Jellyfin for the host dashboard.
+"""Cache movie and series artwork from Jellyfin for the host dashboard.
 
 Writes <serve_dir>/media/ with small posters, backdrops and title logos plus
 media.json describing them. The page reads only these files, so it needs no
@@ -62,27 +62,42 @@ def main(serve_dir):
     out = os.path.join(serve_dir, "media")
     os.makedirs(out, exist_ok=True)
 
+    # Movies plus series (the Shows and Anime libraries are both Series).
     items = get_json("/Items", key, {
-        "IncludeItemTypes": "Movie",
+        "IncludeItemTypes": "Movie,Series",
         "Recursive": "true",
         "Fields": "Genres,Overview",
         "SortBy": "DateCreated",
         "SortOrder": "Descending",
     })["Items"]
 
-    movies, keep = [], {"media.json"}
+    titles, keep = [], {"media.json"}
     for it in items:
         tags = it.get("ImageTags", {})
         if "Primary" not in tags:
             continue  # new items can lack art until a refresh (house rule 5)
         iid = it["Id"]
+        is_series = it.get("Type") == "Series"
+        episodes = None
+        if is_series:
+            # Only series with episode files actually on disk: Jellyfin can
+            # list metadata-only "missing" episodes for a series.
+            episodes = get_json("/Items", key, {
+                "ParentId": iid, "IncludeItemTypes": "Episode", "Recursive": "true",
+                "IsMissing": "false", "Limit": 0,
+            })["TotalRecordCount"]
+            if not episodes:
+                continue
         entry = {
             "id": iid,
+            "type": "series" if is_series else "movie",
             "name": it.get("Name", ""),
             "year": it.get("ProductionYear"),
             "genres": (it.get("Genres") or [])[:3],
             "rating": it.get("OfficialRating"),
-            "minutes": round(it["RunTimeTicks"] / 600_000_000) if it.get("RunTimeTicks") else None,
+            # A series' RunTimeTicks is one episode's length; show episodes instead.
+            "minutes": round(it["RunTimeTicks"] / 600_000_000) if it.get("RunTimeTicks") and not is_series else None,
+            "episodes": episodes,
             "overview": (it.get("Overview") or "")[:280],
         }
         # Filenames carry the image tag, so changed artwork gets a new URL
@@ -102,11 +117,11 @@ def main(serve_dir):
                 keep.add(name)
             except OSError as e:
                 print(f"skip {entry['name']} {field}: {e}", file=sys.stderr)
-        movies.append(entry)
+        titles.append(entry)
 
     tmp = os.path.join(out, "media.json.tmp")
     with open(tmp, "w") as f:
-        json.dump({"movies": movies}, f)
+        json.dump({"titles": titles}, f)
     os.replace(tmp, os.path.join(out, "media.json"))
 
     # Drop artwork for titles that left the library (only files in media/).
@@ -114,7 +129,7 @@ def main(serve_dir):
         if name not in keep and not name.endswith(".tmp"):
             os.remove(os.path.join(out, name))
 
-    print(f"{len(movies)} movies cached in {out}")
+    print(f"{len(titles)} titles cached in {out}")
 
 
 if __name__ == "__main__":
